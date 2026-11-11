@@ -16,6 +16,8 @@ export default function AuthPage() {
     setAuthError,
     navigate,
     submitAuth,
+    idCheck,
+    checkAuthId,
   } = useAuthContext();
   const { pathname } = useLocation();
   const isSignup = pathname === '/signup';
@@ -33,7 +35,18 @@ export default function AuthPage() {
             value={authId}
             onChange={(e) => setAuthId(e.target.value)}
             placeholder="아이디를 입력하세요"
+            onBlur={() => isSignup && checkAuthId()}
           />
+          {isSignup && idCheck && (
+            <small
+              className="mt-2 block text-xs leading-relaxed"
+              style={{ color: idCheck === 'available' ? '#59654F' : '#b34848' }}
+            >
+              {idCheck === 'available'
+                ? '사용 가능한 아이디예요'
+                : '이미 사용 중인 아이디예요'}
+            </small>
+          )}
           <FieldLabel>비밀번호</FieldLabel>
           <input
             type="password"

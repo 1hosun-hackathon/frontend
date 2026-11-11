@@ -6,6 +6,9 @@ const BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 const REISSUE_PATH = '/api/v1/auth/reissue';
 
 let accessToken = null;
+// 서버 시계 - 브라우저 시계 (ms). 응답의 Date 헤더를 읽을 수 있을 때만 갱신, 못 읽으면 0(브라우저 시계)
+let clockOffset = 0;
+export const serverNow = () => Date.now() + clockOffset;
 let refreshPromise = null;
 const expiredListeners = new Set();
 
@@ -98,6 +101,9 @@ export async function request(path, options = {}) {
       expiredListeners.forEach((fn) => fn());
     }
   }
+
+  const serverDate = Date.parse(res.headers.get('Date') || '');
+  if (!Number.isNaN(serverDate)) clockOffset = serverDate - Date.now();
 
   const data = await parseBody(res);
   if (!res.ok) throw new ApiError(res.status, data);

@@ -14,6 +14,7 @@ import { useServerRecords } from '../hooks/useServerRecords';
 import { deleteTraining } from '../api/records';
 import { withdraw as withdrawAccount } from '../api/home';
 import { clearTrainingId } from '../hooks/trainingSession';
+import { remainingSeconds } from '../hooks/timerClock';
 
 const TrainingContext = createContext(null);
 export function TrainingProvider({ children }) {
@@ -36,7 +37,9 @@ export function TrainingProvider({ children }) {
     setSelected,
   });
   const [writingMinutes, setWritingMinutes] = useState(null);
-  const timer = useTimer(pathname, writingMinutes);
+  // 서버 timerEndsAt (session과 동기화, writingMinutes와 같은 방식)
+  const [writingEndsAt, setWritingEndsAt] = useState(null);
+  const timer = useTimer(pathname, writingMinutes, writingEndsAt);
   const writing = useWriting({
     navigate,
     notify,
@@ -51,6 +54,10 @@ export function TrainingProvider({ children }) {
   useEffect(
     () => setWritingMinutes(writing.session.minutes),
     [writing.session.minutes],
+  );
+  useEffect(
+    () => setWritingEndsAt(writing.session.timerEndsAt ?? null),
+    [writing.session.timerEndsAt],
   );
   // 새로고침으로 session이 비었을 때 sessionStorage의 trainingId로 초안 작성 화면 복구
   useEffect(() => {
@@ -69,11 +76,15 @@ export function TrainingProvider({ children }) {
           genre: w.writingType ?? s.genre,
           requirements: w.requirements ?? '',
           minutes: w.timerMinutes ?? null,
+          timerEndsAt: w.timerEndsAt ?? null,
           draft: w.editorContent ?? '',
           pendingAnalysisId:
             w.status === 'ANALYZING' ? w.latestAnalysisId : null,
         }));
-        timer.setSeconds((w.timerMinutes ?? 15) * 60);
+        timer.setSeconds(
+          remainingSeconds(w.timerEndsAt, w.timerMinutes) ??
+            (w.timerMinutes ?? 15) * 60,
+        );
       })
       .catch(() => {});
     return () => {

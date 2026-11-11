@@ -11,6 +11,7 @@ import {
 import { getAnalysis, pollAnalysis, retryAnalysis } from '../api/analyses';
 import { toAnalysisView } from '../api/analysisView';
 import { setTrainingId, clearTrainingId } from './trainingSession';
+import { remainingSeconds } from './timerClock';
 // 서버 응답 에러(ApiError)면 그 메시지, 네트워크 오류 등은 fallback 문구
 const errorText = (err, fallback) => (err?.status ? err.message : fallback);
 // 서버 진행 중 항목을 이어서 열 때 상태별 이동 화면
@@ -89,7 +90,10 @@ export function useWriting({
     }
     if (saved.trainingId) setTrainingId(saved.trainingId);
     setSession(saved);
-    setSeconds((saved.minutes ?? 15) * 60);
+    setSeconds(
+      remainingSeconds(saved.timerEndsAt, saved.minutes) ??
+        (saved.minutes ?? 15) * 60,
+    );
     navigate(saved.draft || saved.trainingId ? '/writing' : '/setup');
   };
   const begin = () => {
@@ -114,7 +118,8 @@ export function useWriting({
         update('trainingId', res.trainingId);
         update('status', 'DRAFTING');
         update('minutes', min);
-        setSeconds((min ?? 15) * 60);
+        update('timerEndsAt', res.timerEndsAt ?? null);
+        setSeconds(remainingSeconds(res.timerEndsAt, min) ?? (min ?? 15) * 60);
         navigate('/writing');
       })
       .catch((err) =>

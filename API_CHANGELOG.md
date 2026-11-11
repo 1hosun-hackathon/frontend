@@ -192,6 +192,34 @@
 - **유지한 것**: `<p>` 태그(원래도 className 없음)와 같은 Card 안의 간격, "번호 + 공백 + 질문" 형식, 서버 값이 없을 때 기존 문구 2개(①②)
 - **되돌리는 법**: `git checkout dev -- src/pages/ComparisonPage.jsx`
 
+### 20. [건 1] 회원가입 아이디 중복 확인 — 서버 API(check-login-id)가 있으나 화면에 호출 자리가 없어 UI 추가
+- **파일**: `src/hooks/useAuth.js`, `src/pages/AuthPage.jsx`
+- **바꾼 이유**: `GET /api/v1/auth/check-login-id`(`{ available }`)가 있고 `src/api/auth.js`에 `checkLoginId`도 있었지만, 회원가입 화면에 호출할 자리가 없었음
+- **바꾼 곳**
+  - `useAuth.js`: `useRef` import. `idCheck` 상태(`null`/`'available'`/`'taken'`), 최신 아이디 ref, 아이디가 바뀌면 결과를 지우는 effect. `checkAuthId()`(형식 `^[a-z0-9]{4,30}$` 통과 시에만 호출, 응답 전에 아이디가 바뀌면 결과 버림, 호출 실패 시 표시 없음 → 가입 시 서버 409로 처리). 반환 키에 `idCheck`, `checkAuthId` 추가
+  - `AuthPage.jsx`: `useAuthContext()`에서 `idCheck`, `checkAuthId`를 꺼냄(18줄 뒤 2줄), 아이디 input 뒤에 아래 UI 요소 추가
+- **추가한 UI 요소**
+  1. 아이디 `<input>`의 `onBlur={() => isSignup && checkAuthId()}` 속성 1개 (로그인 화면에서는 호출하지 않음)
+  2. `<small className="mt-2 block text-xs leading-relaxed">` 안내 문구 1개 (회원가입 화면에서 결과가 있을 때만): 사용 가능 `#59654F` "사용 가능한 아이디예요" / 사용 불가 `#b34848` "이미 사용 중인 아이디예요". 화면 하단 안내 문구의 글자 크기·줄 간격, 기존 오류 문구 색, 앱의 진한 초록을 따름
+- **유지한 것**: 기존 반환 키 12개와 `submitAuth`·`logout`의 동작, 빨간 `authError` 문구 자리, input의 `value`·`onChange`·`placeholder`. 결과가 "사용 중"이어도 가입 버튼을 막지 않음(서버 409에 맡김). 태그 점검: dev 대비 변화는 위 2개뿐
+- **되돌리는 법**: `git checkout dev -- src/pages/AuthPage.jsx` (로직까지 되돌리려면 `src/hooks/useAuth.js`도)
+
+### 21. [건 2] 서버 타이머 — 서버 timerEndsAt이 있으나 클라이언트 타이머만 써서 새로고침 시 초기화되던 문제 해결
+- **파일**: `src/hooks/timerClock.js`(새 파일), `src/api/client.js`, `src/hooks/useTimer.js`, `src/hooks/useWriting.js`, `src/context/TrainingContext.jsx`
+- **바꾼 이유**: 서버가 `timerEndsAt`(종료 시각)을 주는데 화면 타이머는 `분 × 60`부터 매초 1씩 빼기만 해서, 새로고침하거나 다른 화면에 다녀오면 시간이 처음부터 다시 시작되거나 멈춰 있었음
+- **바꾼 곳**
+  - `timerClock.js`: `parseServerTime`(시간대 표시가 없으면 **UTC(`Z`)로 해석** — 처음엔 KST `+09:00`으로 가정했으나 실제 응답이 UTC로 확인되어 수정, 소수 초 3자리), `remainingSeconds(endsAt, timerMinutes)`(서버 기준 현재 시각으로 계산, 음수면 0, 잘못된 값이면 null, **안전장치**: `timerMinutes × 60 + 60`초보다 크면 시간대 오류로 보고 null → 기존 방식)
+  - `client.js`: `clockOffset`·`serverNow()` 추가, `request()`에서 응답 `Date` 헤더를 읽을 수 있을 때만 시계 차이 갱신 (못 읽으면 브라우저 시계)
+  - `useTimer.js`: 세 번째 선택 인자 `endsAt`. 있으면 `/writing` 진입 시와 매초 남은 시간 재계산, 없으면 기존처럼 1씩 감소
+  - `useWriting.js`: `begin`에서 `timerEndsAt`을 session에 저장하고 남은 시간으로 시작. `resume` 로컬 경로도 `saved.timerEndsAt` 사용 (없으면 기존 `분 × 60`)
+  - `TrainingContext.jsx`: 39줄 `useTimer(pathname, writingMinutes, writingEndsAt)` (사용자 승인), `writingEndsAt` 상태와 동기화 effect, `/writing` 복구 시 `timerEndsAt` 저장 및 남은 시간으로 시작
+- **유지한 것**: `timerEndsAt`이 없으면 기존 동작 그대로, 타이머 미설정(`minutes === null`) 동작, `useTimer`·`useWriting` 반환 키. 화면 파일 수정 없음
+- **되돌리는 법**: `git checkout dev -- src/hooks/useTimer.js src/hooks/useWriting.js src/context/TrainingContext.jsx src/api/client.js` 후 `src/hooks/timerClock.js` 삭제
+
+### 참고: 화면 파일 태그 점검 스크립트 정정
+- 13·16·19번 등에서 보고한 "태그·속성 시퀀스 동일" 자동 점검은, 여러 줄에 걸친 태그의 속성이 비교에서 빠지는 허점이 있었음
+- 태그를 하나씩 읽는 방식으로 고친 스크립트로 화면 4개(ComparisonPage·RewritePage·Criteria·GrowthDashboardPage)를 dev와 다시 비교함 → **승인한 변경(질문 `<p>` map, 세 번째 카드 label) 외에 태그·속성 변화 없음**
+
 ## 신규 파일 목록과 역할
 - `src/api/client.js`: 공통 fetch 래퍼. access token을 메모리에 보관하고, 401이 오면 1회 재발급 후 재시도. `ApiError` 정의
 - `src/api/auth.js`: 회원가입, 로그인, 재발급, 로그아웃, 아이디 중복 확인 API
@@ -205,6 +233,7 @@
 - `src/api/records.js`: 기록 목록(전체 페이지 조회, size 50 → 400이면 10으로 재시도), 상세, 삭제 API
 - `src/api/home.js`: 홈, 대시보드, 내 정보(현재 미사용), 회원탈퇴 API
 - `src/api/recordView.js`: 목록·상세 응답을 화면의 records 모양으로 변환, 날짜 `YYYY.MM.DD` 변환, 비율 합치기
+- `src/hooks/timerClock.js`: 서버 `timerEndsAt` 해석(시간대 없으면 KST 가정)과 남은 초 계산, 시간대 오류 안전장치
 - `src/hooks/useServerRecords.js`: 홈·기록·대시보드·마이페이지·완료 화면 진입 시 records·saved·비율을 서버 값으로 채우고, 완료 화면에서 상세 본문을 채움
 
 ## 나중에 바꿀 것
@@ -229,10 +258,14 @@
 19. **완료 훈련이 적으면 mostImproved/focusArea가 null이라 mock이 보임**: 완료한 훈련이 없거나 적어 서버가 `null`을 주면 대시보드에 mock `논지` / `근거 구성`이 표시됨 (사용자 결정 (a): 문구 추가 없이 mock으로 대체). 빈 상태 문구를 넣으려면 문구 승인 필요
 20. **AI 의존도 미표시**: 대시보드 `trend[].aiDependencyRatio`를 그래프에 표시하지 않음. 넣으려면 그래프 2시리즈(칸마다 막대 2개)와 범례가 필요하고, 화면 약 15~25줄·새 태그 6~7개·새 색상 1~2개 규모 (데이터 쪽은 `applyRatios`에 약 3줄)
 21. **demo-chart/chart-bar 스타일이 src에 없어 막대가 안 보일 가능성** (원래부터 있던 문제, 팀원 확인 필요): GrowthDashboardPage 그래프의 `demo-chart`·`chart-bar` 클래스 정의가 `index.css` 등 src 어디에도 없음. 바깥 div에 `display:flex`가 없어 `align-items`·`flex:1`이 적용되지 않고, 막대에 배경색이 없음. 서버 데이터 연결과 무관하게 막대그래프로 보이지 않을 수 있음
+22. **timerEndsAt은 UTC로 해석 (시간대 표시 없음)**: 서버가 UTC 시각을 시간대 표시 없이 전달함. 확인된 실제 응답(`POST /trainings`, 한국 시각 00:09경 생성): `startedAt "2026-11-11T15:09:20.907969353"`, `timerEndsAt "2026-11-11T15:39:20.907969353"`. 그래서 `src/hooks/timerClock.js`는 시간대 표시가 없으면 `Z`를 붙여 해석함(표시가 있으면 그대로). **서버가 UTC 표기를 유지한다는 전제이며, 서버 시간대 설정이 바뀌면 재확인 필요.** 백엔드에 시간대 포함(ISO 8601 offset) 요청 권장
+23. **타이머 안전장치와 한계**: 계산한 남은 시간이 `timerMinutes × 60 + 60`초보다 크면 시간대 오류로 보고 기존 방식(`분 × 60`, 1초씩 감소)으로 대체. 반대 방향 오류(종료 시각이 실제보다 이르게 해석되어 바로 0이 되는 경우)는 정상 종료와 구분할 수 없어 막지 못함. 처음 KST로 가정했을 때 타이머가 0초로 표시된 증상이 바로 이 경우였고, UTC 해석으로 바꿔 해결함(22번)
+24. **배포 시 `Access-Control-Expose-Headers: Date` 필요**: 시계 차이 보정은 응답 `Date` 헤더를 읽을 수 있을 때만 동작. 개발 환경은 Vite 프록시로 같은 출처라 읽히지만, 배포(다른 출처)에서는 백엔드가 이 헤더를 노출해야 함. 못 읽으면 보정 없이 브라우저 시계 사용
 
 그 밖의 임시 처리
 - **첨부파일 업로드 제외**: `createTraining`이 `files` 부분을 보내지 않음. SetupPage는 파일 이름만 보관 중이라, 업로드하려면 `File` 객체 보관이 필요 (화면 파일 수정 필요)
-- **타이머는 클라이언트 기준**: 서버 `timerEndsAt`을 쓰지 않아 새로고침하면 처음부터 다시 셈
+- ~~타이머는 클라이언트 기준~~ → **해결**: 서버 `timerEndsAt` 기준으로 남은 시간 계산 (21번)
+- ~~아이디 중복 확인 UI 없음~~ → **해결**: 회원가입 아이디 입력칸 onBlur로 확인 (20번)
 - **배포 시 백엔드 CORS 설정 필요, 프록시는 개발 전용**: `vite.config.js`의 `server.proxy`는 dev 서버에서만 동작함. 배포 사이트에서는 백엔드가 프론트 도메인을 허용하고 `Access-Control-Allow-Credentials: true`를 설정해야 하며, refresh 쿠키는 `SameSite=None; Secure`여야 함. 백엔드 CORS 설정이 끝나면 프록시를 제거하고 `.env.local`에 다시 `https://mind-test.store`를 넣어도 됨
 - ~~완료 후 기록은 아직 로컬~~ → **해결**: `complete`가 로컬 기록에 추가한 항목은 완료 화면 진입 시 서버 목록·상세로 교체됨
 

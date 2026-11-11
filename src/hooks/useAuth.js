@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { USER, get, set } from '../lib/storage';
 import * as authApi from '../api/auth';
 import { onAuthExpired } from '../api/client';
@@ -17,6 +17,12 @@ export function useAuth(navigate) {
   const [pw, setPw] = useState('');
   const [pw2, setPw2] = useState('');
   const [authError, setAuthError] = useState('');
+  // 회원가입 아이디 중복 확인 결과: null | 'available' | 'taken'
+  const [idCheck, setIdCheck] = useState(null);
+  const authIdRef = useRef(authId);
+  authIdRef.current = authId;
+  // 아이디를 다시 입력하면 이전 확인 결과를 지움
+  useEffect(() => setIdCheck(null), [authId]);
   const clearUser = () => {
     setUser(null);
     try {
@@ -56,6 +62,21 @@ export function useAuth(navigate) {
     } catch (err) {
       setAuthError(authErrorMessage(err, false));
     }
+  };
+  // 회원가입 화면에서 아이디 입력칸을 벗어날 때 호출. 형식 검증을 통과한 경우에만 서버 확인.
+  // 호출이 실패하면 아무것도 표시하지 않음 (가입 시 서버 409로 처리)
+  const checkAuthId = () => {
+    const loginId = authId.trim();
+    if (!LOGIN_ID_PATTERN.test(loginId)) return;
+    authApi
+      .checkLoginId(loginId)
+      .then((res) => {
+        // 응답이 오기 전에 아이디가 바뀌었으면 결과를 버림
+        if (authIdRef.current.trim() !== loginId) return;
+        if (typeof res?.available !== 'boolean') return;
+        setIdCheck(res.available ? 'available' : 'taken');
+      })
+      .catch(() => {});
   };
   const submitAuth = (e, isSignup) => {
     e.preventDefault();
@@ -104,5 +125,7 @@ export function useAuth(navigate) {
     setAuthError,
     submitAuth,
     logout,
+    idCheck,
+    checkAuthId,
   };
 }

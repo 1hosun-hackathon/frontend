@@ -5,12 +5,15 @@ import { useWriting } from '../hooks/useWriting';
 import { useAuthContext } from './AuthContext';
 import { useModalContext } from './ModalContext';
 import { useLocation } from 'react-router-dom';
+import { getTraining } from '../api/trainings';
+import { getTrainingId } from '../hooks/trainingSession';
 
 const TrainingContext = createContext(null);
 export function TrainingProvider({ children }) {
   const { navigate, logout } = useAuthContext();
   const { pathname } = useLocation();
   const { openModal, notify } = useModalContext();
+  const { closeModal } = useModalContext();
   const recordsState = useRecords();
   const { setRecords, setSaved, saved, setSelected, setMenu, setDeleting } =
     recordsState;
@@ -24,11 +27,40 @@ export function TrainingProvider({ children }) {
     setRecords,
     setSelected,
     setSeconds: timer.setSeconds,
+    openModal,
+    closeModal,
   });
   useEffect(
     () => setWritingMinutes(writing.session.minutes),
     [writing.session.minutes],
   );
+  // 새로고침으로 session이 비었을 때 sessionStorage의 trainingId로 초안 작성 화면 복구
+  useEffect(() => {
+    if (pathname !== '/writing' || writing.session.trainingId) return;
+    const id = getTrainingId();
+    if (!id) return;
+    let cancelled = false;
+    getTraining(id)
+      .then((w) => {
+        if (cancelled || !w) return;
+        writing.setSession((s) => ({
+          ...s,
+          trainingId: w.trainingId,
+          topic: w.topic ?? '',
+          genre: w.writingType ?? s.genre,
+          requirements: w.requirements ?? '',
+          minutes: w.timerMinutes ?? null,
+          draft: w.editorContent ?? '',
+          pendingAnalysisId:
+            w.status === 'ANALYZING' ? w.latestAnalysisId : null,
+        }));
+        timer.setSeconds((w.timerMinutes ?? 15) * 60);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, writing.session.trainingId]);
   const requestDelete = (id) => {
     setMenu(null);
     openModal({

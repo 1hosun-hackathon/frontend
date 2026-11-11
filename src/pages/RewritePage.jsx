@@ -52,19 +52,19 @@ export default function RewritePage() {
           <h2>비교 분석 참고</h2>
           <h3>종합 피드백</h3>
           <MutedText>
-            내 글의 고유한 관점을 유지하면서 근거와 구조를 보완해보세요.
+            {session.analysis?.report?.[0] || '내 글의 고유한 관점을 유지하면서 근거와 구조를 보완해보세요.'}
           </MutedText>
           <h3>강점</h3>
-          <MutedText>{demoAnalysis.strengths}</MutedText>
+          <MutedText>{session.analysis?.strengths || demoAnalysis.strengths}</MutedText>
           <h3>보완점</h3>
-          <MutedText>{demoAnalysis.improvements}</MutedText>
+          <MutedText>{session.analysis?.improvements || demoAnalysis.improvements}</MutedText>
           <details>
             <summary>항목별 비교 펼쳐보기</summary>
             <Criteria />
           </details>
           <h3>사고 확장 질문</h3>
           <MutedText>
-            {demoAnalysis.reflectionQuestions.map((q, i) => (
+            {(session.analysis?.questions?.length ? session.analysis.questions : demoAnalysis.reflectionQuestions).map((q, i) => (
               <React.Fragment key={q}>
                 {i > 0 && <br />}
                 {q}

@@ -26,7 +26,7 @@ export function TrainingProvider({ children }) {
   const { setRecords, setSaved, saved, setSelected, setMenu, setDeleting } =
     recordsState;
   // 서버 기록으로 records · saved · selected 채우기 (홈·기록·대시보드·마이페이지·완료 화면)
-  const { serverRatio, reload: reloadRecords } = useServerRecords({
+  const { serverRatio, serverGrowth, reload: reloadRecords } = useServerRecords({
     user,
     pathname,
     records: recordsState.records,
@@ -211,6 +211,8 @@ export function TrainingProvider({ children }) {
         remove,
         // 화면이 읽는 ratio를 서버 값(최근 완료 3회 평균)으로. 불러오기 전에는 기존 계산값
         ratio: serverRatio ?? recordsState.ratio,
+        // 대시보드 mostImproved / focusArea의 label ({ strongest, focus }), 불러오기 전에는 null
+        serverGrowth,
       }}
     >
       {children}

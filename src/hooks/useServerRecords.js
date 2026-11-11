@@ -24,6 +24,8 @@ export function useServerRecords({
   setSelected,
 }) {
   const [serverRatio, setServerRatio] = useState(null);
+  // 대시보드 가장 성장한 항목 / 집중 개선 항목 (label만 사용)
+  const [serverGrowth, setServerGrowth] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
   const reload = () => setReloadKey((k) => k + 1);
 
@@ -59,6 +61,11 @@ export function useServerRecords({
         setServerRatio(
           ratio === null || ratio === undefined ? 0 : Math.round(ratio),
         );
+        if (dashboard)
+          setServerGrowth({
+            strongest: dashboard.mostImproved?.label || null,
+            focus: dashboard.focusArea?.label || null,
+          });
       })
       .catch(() => {});
     return () => {
@@ -96,5 +103,5 @@ export function useServerRecords({
     };
   }, [user, pathname, selected?.id]);
 
-  return { serverRatio, reload };
+  return { serverRatio, serverGrowth, reload };
 }

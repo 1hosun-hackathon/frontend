@@ -10,7 +10,7 @@ import React from 'react';
 import { demoAnalysis } from '../mocks/analysis';
 
 export default function GrowthDashboardPage() {
-  const { records, setSelected, ratio } = useTrainingContext();
+  const { records, setSelected, ratio, serverGrowth } = useTrainingContext();
   const { navigate } = useAuthContext();
   return (
     <>
@@ -57,11 +57,11 @@ export default function GrowthDashboardPage() {
         <TwoColumnGrid>
           <InfoBox>
             <b>가장 성장한 항목</b>
-            <p>{demoAnalysis.growth.strongest}</p>
+            <p>{serverGrowth?.strongest || demoAnalysis.growth.strongest}</p>
           </InfoBox>
           <InfoBox>
             <b>집중 개선 항목</b>
-            <p>{demoAnalysis.growth.focus}</p>
+            <p>{serverGrowth?.focus || demoAnalysis.growth.focus}</p>
           </InfoBox>
         </TwoColumnGrid>
       </Card>

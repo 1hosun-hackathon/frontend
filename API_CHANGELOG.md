@@ -116,6 +116,58 @@
 - **유지한 것**: value 키 전부, 모달 제목·문구(탈퇴 문구 포함), `remove` 함수(화면에서 쓰지 않아 수정하지 않음), 이전 단계의 effect. 화면 파일은 수정하지 않음
 - **되돌리는 법**: `git checkout dev -- src/context/TrainingContext.jsx` (3·7번 변경까지 함께 되돌아감)
 
+### 11. src/pages/ComparisonPage.jsx (화면 파일 — 사용자 승인 범위: 문구·mock 출처만)
+- **왜 고쳤는지**: 강점·보완점·생각해볼 질문 문구가 JSX에 글자로 박혀 있고, 종합 리포트는 mock(`demoAnalysis.comparisonReport`)을 직접 읽고 있어, 서버 값(`session.analysis`)을 넣을 통로가 없었음. `{}` 안의 데이터 출처만 교체
+- **바꾼 곳**: 47줄(종합 리포트), 56줄(강점), 60줄(보완점), 71줄(질문 ①), 72줄(질문 ②)
+  - 47줄: `(session.analysis?.report?.length ? session.analysis.report : demoAnalysis.comparisonReport).map(...)` (서버 문단 배열, 없으면 mock 3문단)
+  - `<p>{session.analysis?.strengths || '기존 문구'}</p>`, `improvements`도 같은 형태
+  - `<p>① {session.analysis?.questions?.[0] || '기존 문구'}</p>`, ②는 `[1]` (번호 기호는 `{}` 밖에 유지)
+  - 빈 문자열일 때도 기존 문구가 나오도록 `??` 대신 `||` 사용 (사용자 결정)
+- **유지한 것**: 태그·className·props·레이아웃 무수정 (태그·속성 순서와 줄 수를 원본과 자동 비교해 동일함을 확인). 질문 `<p>` 2개 그대로. 종합 리포트의 `<p key={index}>` 그대로. Criteria는 수정하지 않음. 새 API 호출이나 import 없음 (기존 `session` 사용)
+- **되돌리는 법**: `git checkout dev -- src/pages/ComparisonPage.jsx`
+
+### 12. src/pages/RewritePage.jsx (화면 파일 — 사용자 승인 범위: 사이드바 문구·mock 출처만)
+- **왜 고쳤는지**: 사이드바의 종합 피드백 문구는 JSX에 글자로, 강점·보완점·질문은 mock(`demoAnalysis`)이 직접 박혀 있어 서버 값(`session.analysis`)을 넣을 통로가 없었음. `{}` 안의 데이터 출처만 교체
+- **바꾼 곳**
+  - 55줄 종합 피드백: `{session.analysis?.report?.[0] || '기존 문구'}` (첫 문단만, 사용자 결정 (b))
+  - 58줄 강점: `{session.analysis?.strengths || demoAnalysis.strengths}`
+  - 60줄 보완점: `{session.analysis?.improvements || demoAnalysis.improvements}`
+  - 67줄 질문: `(session.analysis?.questions?.length ? session.analysis.questions : demoAnalysis.reflectionQuestions).map(...)` (서버 질문 전부 표시, 0개면 mock 전체)
+- **유지한 것**: 태그·className·props·레이아웃 무수정 (태그·속성 순서와 줄 수를 원본과 자동 비교해 동일함을 확인). `key={q}`, Criteria(63줄)는 수정하지 않음. 새 API 호출·import 없음
+- **되돌리는 법**: `git checkout dev -- src/pages/RewritePage.jsx`
+
+### 13. src/components/Criteria.jsx (화면 파일 — 사용자 승인 범위: 데이터 출처·등급 표시만)
+- **왜 고쳤는지**: mock(`mocks/criteria`)을 직접 import하고 props가 없어서 서버 값(`session.analysis.criteria`)을 받을 통로가 없었음. props를 늘리지 않고 context에서 읽도록 함수를 본문 형태(`=> { … return ( … ); }`)로 변경
+- **바꾼 곳**
+  - import 1줄 추가: `useTrainingContext`
+  - 7줄: `=> (` → `=> {` + 데이터 선택(`const items = !completion && serverItems?.length ? serverItems : criteria;`) + `return (`
+  - 9줄: `criteria.map` → `items.map`
+  - 30·34·44·48줄 등급: `· {c.before}` → ``{c.before ? ` · ${c.before}` : ''}`` (등급이 비면 " · 등급"만 숨김, 값이 있으면 기존과 같은 글자)
+  - 64줄: `);` → `  );` + `};`
+- **유지한 것**: props 시그니처 `({ completion = false })`와 호출부 3곳, 태그·className·`key`·`open`·`defaultOpen` (태그·속성 순서를 원본과 자동 비교해 동일), JSX 안의 나머지 줄. **completion 모드(완료 화면)는 항상 mock** (등급이 있어 표시 글자도 기존과 동일)
+- **되돌리는 법**: `git checkout dev -- src/components/Criteria.jsx`
+
+### 14. src/hooks/useServerRecords.js (대시보드 성장/집중 항목)
+- **이유**: `GET /dashboard` 응답을 이미 받고 있었지만 `mostImproved`/`focusArea`를 화면까지 전달할 값이 없었음
+- **바꾼 곳**: `serverGrowth` state 추가, 대시보드 응답 처리에 `setServerGrowth({ strongest: mostImproved.label, focus: focusArea.label })` 추가(응답이 실패하면 이전 값 유지), return에 `serverGrowth` 추가
+- **유지한 것**: 기존 effect 2개의 동작, 반환 키 `serverRatio`·`reload`
+- **되돌리는 법**: `git checkout dev -- src/hooks/useServerRecords.js` (이 파일이 dev에 없으면 이번 3줄 묶음만 삭제)
+
+### 15. src/context/TrainingContext.jsx (serverGrowth 전달)
+- **이유**: 대시보드 화면이 읽을 수 있도록 `serverGrowth`를 Provider value로 노출해야 함
+- **바꾼 곳**: 29줄 `useServerRecords` 결과에서 `serverGrowth`도 꺼냄 (10번에서 추가한 줄), value 끝에 `serverGrowth` 키 1줄 추가
+- **유지한 것**: 기존 value 키 전부, 원본 줄 전부. 화면이 읽는 기존 값의 의미 변화 없음
+- **되돌리는 법**: `git checkout dev -- src/context/TrainingContext.jsx`
+
+### 16. src/pages/GrowthDashboardPage.jsx (화면 파일 — 사용자 승인 범위: 성장/집중 항목 label만 + 13줄)
+- **왜 고쳤는지**: 가장 성장한 항목 / 집중 개선 항목이 mock(`demoAnalysis.growth`)을 직접 읽고 있어 서버 값을 넣을 통로가 없었음. `{}` 안의 데이터 출처만 교체
+- **바꾼 곳**
+  - 13줄: `useTrainingContext()`에서 `serverGrowth`도 꺼냄 (화면에 보이지 않는 줄, 사용자 승인)
+  - 60줄: `{serverGrowth?.strongest || demoAnalysis.growth.strongest}`
+  - 64줄: `{serverGrowth?.focus || demoAnalysis.growth.focus}`
+- **유지한 것**: 태그·className·props·레이아웃 무수정 (태그·속성 순서와 줄 수를 원본과 자동 비교해 동일), 세 번째 카드·그래프·최근 목록. 빈 상태는 mock으로 대체 (사용자 결정 (a))
+- **되돌리는 법**: `git checkout dev -- src/pages/GrowthDashboardPage.jsx`
+
 ## 신규 파일 목록과 역할
 - `src/api/client.js`: 공통 fetch 래퍼. access token을 메모리에 보관하고, 401이 오면 1회 재발급 후 재시도. `ApiError` 정의
 - `src/api/auth.js`: 회원가입, 로그인, 재발급, 로그아웃, 아이디 중복 확인 API
@@ -132,8 +184,8 @@
 - `src/hooks/useServerRecords.js`: 홈·기록·대시보드·마이페이지·완료 화면 진입 시 records·saved·비율을 서버 값으로 채우고, 완료 화면에서 상세 본문을 채움
 
 ## 나중에 바꿀 것
-1. **비교 분석 화면은 mock 표시 중 (A0)**: 리포트·강점·보완점·질문·Criteria 항목은 지금 mock을 보여줌. 서버 데이터는 이미 `session.analysis`(`toAnalysisView` 결과: `report`·`summary`·`strengths`·`improvements`·`criteria`·`questions`)에 저장되고 있어서, 화면 파일 수정이 허용되면 `{}` 안의 데이터 출처만 바꾸면 연결됨 (ComparisonPage 47·56·60·71-72줄, RewritePage 55·58·60·67줄, Criteria.jsx 데이터 출처). 이번에 실제 값으로 표시되는 것은 내 글·AI 글·초안/수정본 비교뿐
-2. **등급(보통→우수)은 API에 없음**: Criteria와 완료 화면 점수 칸의 `before`/`after`. `toCriteria`는 빈 값으로 둠. 백엔드가 등급·점수를 응답에 추가하면 연결
+1. ~~비교 분석 화면 일부는 mock 표시 중~~ → **해결**: ComparisonPage(종합 리포트·강점·보완점·질문, 11번), RewritePage 사이드바(12번), Criteria 항목(13번) 모두 `session.analysis` 서버 값으로 연결. 서버 값이 없으면 기존 mock/문구로 대체
+2. **등급(보통→우수)은 API에 없음 → 숨김 처리 중**: 비교 분석·다시 쓰기의 Criteria는 서버 항목의 등급이 빈 값이라 "· 등급"을 숨기고 `내 글` / `AI 글`만 표시 (13번). 완료 화면(completion 모드)과 점수 칸은 mock 등급 그대로. 백엔드가 등급·점수를 응답에 추가하면 `src/api/analysisView.js`의 `toCriteria`에서 `before`/`after`만 채우면 자동으로 표시됨
 3. **완료 화면 성장 리포트·점수 칸·잘한 점/보완할 점은 API 없음 (mock 유지)**: 완료 화면의 Criteria(`completion` 모드)도 mock. 완료 화면에서 실제 값은 주제·최초 초안·최종 글·수정 과정
 4. **ComparisonPage 질문 `<p>` 2개 고정**: `{}` 안의 값만 바꾸는 방식으로는 질문을 2개까지만 표시할 수 있음. 서버가 3개 이상 주면 `map`으로 바꾸는 것을 팀원과 상의 (RewritePage는 `map`이라 전부 표시 가능)
 5. ~~새로고침하면 versions(수정 과정)가 사라짐~~ → **해결**: 완료 화면에서 `GET /trainings/{id}/detail`의 `revisions`로 채움 (`useServerRecords`)
@@ -141,11 +193,16 @@
 7. **409 포괄 문구**: 재검사 409를 "변경 없음"과 "상태 불일치"를 포괄하는 문구로 안내 중. 에러 JSON 형태가 확인되면 `NO_CHANGES` / `TRAINING_INVALID_STATUS`를 구분해 `revisionErrorText`·`completeErrorText`를 수정. `ApiError`가 `body.message`를 가정하는 부분(`src/api/client.js`)도 함께 확인
 8. **writingType 논설문 고정**: `src/api/trainings.js`의 `toServerWritingType`이 항상 `'논설문'`을 반환. 백엔드가 enum을 늘리면 `(genre) => genre;`로 한 줄 교체. 새로고침하면 글 종류가 "논설문"으로 보이는 문제도 함께 해결됨. 화면 선택지 6개와 `models/training.js`의 기본값은 그대로 둠
 9. **대시보드 세 번째 카드(streakDays) mock 유지**: 화면이 "훈련 기록 날짜 N일"을 `records` 날짜 수로 직접 계산함. API의 `streakDays`(연속 완료 일수)는 의미가 달라 화면 수정이 필요 (보류 항목)
-10. **대시보드 가장 성장한 항목 / 집중 개선 항목(mostImproved / focusArea) mock 유지**: 화면이 `demoAnalysis.growth`를 직접 import함. API 값은 `GET /dashboard`에 있으나 화면 수정 없이는 연결 불가. `aiDependencyRatio`도 표시할 자리가 없음
+10. ~~대시보드 가장 성장한 항목 / 집중 개선 항목 mock 유지~~ → **해결**: `mostImproved.label` / `focusArea.label`로 연결 (14~16번). `aiDependencyRatio`(AI 의존도)는 여전히 표시할 자리가 없음
 11. **회원탈퇴 모달 문구 불일치**: 문구는 "훈련 기록이 삭제됩니다"인데 명세는 "훈련 기록은 보존된다". 문구 수정 금지 결정으로 그대로 둠 (TrainingContext의 `withdraw` 모달 message)
 12. **진행 중 글은 가장 최근 1건만 표시**: 홈 카드와 기록 화면의 진행 중 자리가 1개(`saved`)라, 서버에 진행 중 훈련이 여러 개 있어도 1건만 보임. 여러 건을 보이려면 화면 수정 필요
 13. **ANALYZING 상태의 재검사 항목을 이어서 열면 초안 화면으로 감**: `RESUME_PATH`가 ANALYZING을 `/writing`으로 보내서, 재검사 분석 중이던 항목이면 초안 작성 화면에 수정본 내용이 보임. 제출 버튼을 누르면 분석 결과 확인을 이어가고 끝나면 `/analysis`로 이동하므로 흐름은 이어지지만 화면 문맥이 맞지 않음. 서버에서 재검사 여부(seqNo)를 알 수 있으면 `/rewrite`로 보내도록 개선
 14. **로그아웃 후 records가 메모리에 남음**: 로그아웃해도 `records`·`selected`를 비우지 않음. 보호된 화면이라 노출되지는 않고 다시 로그인하면 서버 값으로 교체됨. 비우려면 `useAuth`의 logout 또는 `useServerRecords`에서 `user`가 없을 때 초기화 필요
+15. **서버 질문이 1개일 때 예시 문구가 섞임**: ComparisonPage의 질문 `<p>` 2개 중 ①은 서버 질문, ②는 기존 예시 문구로 표시됨 (사용자 결정 (a): 화면을 항상 2줄로 유지)
+16. ~~ComparisonPage 종합 리포트(47줄)는 아직 mock~~ → **해결**: `session.analysis.report`(문단 배열)로 연결 (11번)
+17. **서버 문자열의 줄바꿈이 `<p>` 안에서 한 줄로 표시됨** (종합 리포트 위치에서는 **해결**: 줄바꿈 기준으로 `<p>`를 나눔. 강점·보완점·질문·RewritePage 사이드바는 그대로): 강점·보완점·질문에 줄바꿈이 있어도 `<p>`가 줄바꿈을 그대로 보여주지 않음. 줄바꿈을 살리려면 스타일(예: `whitespace-pre-line`) 변경이 필요해 디자인 변경에 해당
+18. **RewritePage 질문 `key={q}` 중복 경고**: 서버가 같은 질문 문장을 2개 주면 React가 콘솔에 key 중복 경고를 냄 (화면 표시는 정상). key를 바꾸려면 기존 코드 수정이 필요해 그대로 둠
+19. **완료 훈련이 적으면 mostImproved/focusArea가 null이라 mock이 보임**: 완료한 훈련이 없거나 적어 서버가 `null`을 주면 대시보드에 mock `논지` / `근거 구성`이 표시됨 (사용자 결정 (a): 문구 추가 없이 mock으로 대체). 빈 상태 문구를 넣으려면 문구 승인 필요
 
 그 밖의 임시 처리
 - **첨부파일 업로드 제외**: `createTraining`이 `files` 부분을 보내지 않음. SetupPage는 파일 이름만 보관 중이라, 업로드하려면 `File` 객체 보관이 필요 (화면 파일 수정 필요)

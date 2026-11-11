@@ -168,6 +168,30 @@
 - **유지한 것**: 태그·className·props·레이아웃 무수정 (태그·속성 순서와 줄 수를 원본과 자동 비교해 동일), 세 번째 카드·그래프·최근 목록. 빈 상태는 mock으로 대체 (사용자 결정 (a))
 - **되돌리는 법**: `git checkout dev -- src/pages/GrowthDashboardPage.jsx`
 
+### 17. [건 2] 대시보드 세 번째 카드 — 화면 문구를 서버 기준으로 변경 (화면과 서버가 달라 서버 우선)
+- **파일**: `src/hooks/useServerRecords.js`, `src/context/TrainingContext.jsx`, `src/pages/GrowthDashboardPage.jsx`
+- **바꾼 곳**
+  - `useServerRecords.js`: `serverStreakDays` state 추가, 대시보드 응답에서 `streakDays ?? 0` 저장, 반환 값에 추가
+  - `TrainingContext.jsx`: 29줄에서 `serverStreakDays`도 받음, Provider value에 `serverStreakDays` 키 추가
+  - `GrowthDashboardPage.jsx` 13줄: `serverStreakDays`를 받아옴. 31줄 라벨 `"훈련 기록 날짜"` → `"연속 완료 일수"`. 32줄 값 `기록 날짜 수` → ``${serverStreakDays ?? 0}일`` (서버 값이 없으면 0, 기존 계산값은 쓰지 않음 — 사용자 결정)
+- **바꾼 이유**: 화면은 기록이 있는 날짜 수를 직접 계산했고, 서버는 연속 완료 일수(`streakDays`)를 줌. 화면과 서버가 달라 서버 기준으로 진행
+- **유지한 것**: StatCard 태그와 props 구성(label·value), 다른 카드
+- **되돌리는 법**: `git checkout dev -- src/pages/GrowthDashboardPage.jsx` (로직까지 되돌리려면 `src/hooks/useServerRecords.js`, `src/context/TrainingContext.jsx`도)
+
+### 18. [건 3] 회원탈퇴 모달 문구 — 화면 문구를 서버 기준으로 변경 (화면과 서버가 달라 서버 우선)
+- **파일**: `src/context/TrainingContext.jsx` (`withdraw` 모달 `message`, 187줄)
+- **바꾼 곳**: `'회원탈퇴 시 저장한 훈련 기록이 삭제되며 복구할 수 없습니다.'` → `'회원탈퇴를 진행하면 로그아웃됩니다. 작성한 훈련 기록은 삭제되지 않고 보존됩니다.'` (후보 B: 명세와 코드로 확인된 동작만 담음)
+- **바꾼 이유**: 명세상 탈퇴는 `deleted_at`만 기록하고 훈련 기록을 보존하는데, 문구는 "기록 삭제"라고 안내했음. 화면과 서버가 달라 서버 기준으로 진행
+- **유지한 것**: 모달 제목, 버튼 문구(`탈퇴하기`), `danger` 스타일, 탈퇴 처리 로직
+- **되돌리는 법**: `git checkout dev -- src/context/TrainingContext.jsx`
+
+### 19. [건 4] 비교 분석 생각해볼 질문 — `<p>`를 map으로 변경, 스타일 동일
+- **파일**: `src/pages/ComparisonPage.jsx` (기존 71·72줄)
+- **바꾼 곳**: 고정 `<p>` 2개 → `(서버 질문 배열, 없으면 기존 문구 2개).map((q, i) => <p key={i}>{번호} {q}</p>)`. 번호는 `①②③…⑳` 자동 생성(21번째부터 `21.`)
+- **바꾼 이유**: 서버 질문 개수가 정해져 있지 않은데 화면은 2개로 고정돼 있었음(3개 이상이면 잘리고, 1개면 예시 문구가 섞임). 화면과 서버가 달라 서버 기준으로 진행
+- **유지한 것**: `<p>` 태그(원래도 className 없음)와 같은 Card 안의 간격, "번호 + 공백 + 질문" 형식, 서버 값이 없을 때 기존 문구 2개(①②)
+- **되돌리는 법**: `git checkout dev -- src/pages/ComparisonPage.jsx`
+
 ## 신규 파일 목록과 역할
 - `src/api/client.js`: 공통 fetch 래퍼. access token을 메모리에 보관하고, 401이 오면 1회 재발급 후 재시도. `ApiError` 정의
 - `src/api/auth.js`: 회원가입, 로그인, 재발급, 로그아웃, 아이디 중복 확인 API
@@ -187,22 +211,24 @@
 1. ~~비교 분석 화면 일부는 mock 표시 중~~ → **해결**: ComparisonPage(종합 리포트·강점·보완점·질문, 11번), RewritePage 사이드바(12번), Criteria 항목(13번) 모두 `session.analysis` 서버 값으로 연결. 서버 값이 없으면 기존 mock/문구로 대체
 2. **등급(보통→우수)은 API에 없음 → 숨김 처리 중**: 비교 분석·다시 쓰기의 Criteria는 서버 항목의 등급이 빈 값이라 "· 등급"을 숨기고 `내 글` / `AI 글`만 표시 (13번). 완료 화면(completion 모드)과 점수 칸은 mock 등급 그대로. 백엔드가 등급·점수를 응답에 추가하면 `src/api/analysisView.js`의 `toCriteria`에서 `before`/`after`만 채우면 자동으로 표시됨
 3. **완료 화면 성장 리포트·점수 칸·잘한 점/보완할 점은 API 없음 (mock 유지)**: 완료 화면의 Criteria(`completion` 모드)도 mock. 완료 화면에서 실제 값은 주제·최초 초안·최종 글·수정 과정
-4. **ComparisonPage 질문 `<p>` 2개 고정**: `{}` 안의 값만 바꾸는 방식으로는 질문을 2개까지만 표시할 수 있음. 서버가 3개 이상 주면 `map`으로 바꾸는 것을 팀원과 상의 (RewritePage는 `map`이라 전부 표시 가능)
+4. ~~ComparisonPage 질문 `<p>` 2개 고정~~ → **해결**: `<p>`를 map으로 바꿔 서버 질문을 전부 표시 (19번)
 5. ~~새로고침하면 versions(수정 과정)가 사라짐~~ → **해결**: 완료 화면에서 `GET /trainings/{id}/detail`의 `revisions`로 채움 (`useServerRecords`)
 6. **제출 후 뒤로가기하면 다시 제출되지 않는 버그**: 서버 상태가 COMPARED라 `POST /draft`가 409로 거절되는 것으로 추정. 재현 방법은 아래 "나중에 확인할 것" 참고. (재검사 후 뒤로가기는 `/rewrite` 진입 effect가 REWRITING으로 되돌려 줘서 문제없음)
 7. **409 포괄 문구**: 재검사 409를 "변경 없음"과 "상태 불일치"를 포괄하는 문구로 안내 중. 에러 JSON 형태가 확인되면 `NO_CHANGES` / `TRAINING_INVALID_STATUS`를 구분해 `revisionErrorText`·`completeErrorText`를 수정. `ApiError`가 `body.message`를 가정하는 부분(`src/api/client.js`)도 함께 확인
 8. **writingType 논설문 고정**: `src/api/trainings.js`의 `toServerWritingType`이 항상 `'논설문'`을 반환. 백엔드가 enum을 늘리면 `(genre) => genre;`로 한 줄 교체. 새로고침하면 글 종류가 "논설문"으로 보이는 문제도 함께 해결됨. 화면 선택지 6개와 `models/training.js`의 기본값은 그대로 둠
-9. **대시보드 세 번째 카드(streakDays) mock 유지**: 화면이 "훈련 기록 날짜 N일"을 `records` 날짜 수로 직접 계산함. API의 `streakDays`(연속 완료 일수)는 의미가 달라 화면 수정이 필요 (보류 항목)
+9. ~~대시보드 세 번째 카드(streakDays) mock 유지~~ → **해결**: 라벨을 "연속 완료 일수"로 바꾸고 서버 `streakDays` 표시, 없으면 0 (17번)
 10. ~~대시보드 가장 성장한 항목 / 집중 개선 항목 mock 유지~~ → **해결**: `mostImproved.label` / `focusArea.label`로 연결 (14~16번). `aiDependencyRatio`(AI 의존도)는 여전히 표시할 자리가 없음
-11. **회원탈퇴 모달 문구 불일치**: 문구는 "훈련 기록이 삭제됩니다"인데 명세는 "훈련 기록은 보존된다". 문구 수정 금지 결정으로 그대로 둠 (TrainingContext의 `withdraw` 모달 message)
+11. ~~회원탈퇴 모달 문구 불일치~~ → **해결**: "작성한 훈련 기록은 삭제되지 않고 보존됩니다"로 변경 (18번)
 12. **진행 중 글은 가장 최근 1건만 표시**: 홈 카드와 기록 화면의 진행 중 자리가 1개(`saved`)라, 서버에 진행 중 훈련이 여러 개 있어도 1건만 보임. 여러 건을 보이려면 화면 수정 필요
 13. **ANALYZING 상태의 재검사 항목을 이어서 열면 초안 화면으로 감**: `RESUME_PATH`가 ANALYZING을 `/writing`으로 보내서, 재검사 분석 중이던 항목이면 초안 작성 화면에 수정본 내용이 보임. 제출 버튼을 누르면 분석 결과 확인을 이어가고 끝나면 `/analysis`로 이동하므로 흐름은 이어지지만 화면 문맥이 맞지 않음. 서버에서 재검사 여부(seqNo)를 알 수 있으면 `/rewrite`로 보내도록 개선
 14. **로그아웃 후 records가 메모리에 남음**: 로그아웃해도 `records`·`selected`를 비우지 않음. 보호된 화면이라 노출되지는 않고 다시 로그인하면 서버 값으로 교체됨. 비우려면 `useAuth`의 logout 또는 `useServerRecords`에서 `user`가 없을 때 초기화 필요
-15. **서버 질문이 1개일 때 예시 문구가 섞임**: ComparisonPage의 질문 `<p>` 2개 중 ①은 서버 질문, ②는 기존 예시 문구로 표시됨 (사용자 결정 (a): 화면을 항상 2줄로 유지)
+15. ~~서버 질문이 1개일 때 예시 문구가 섞임~~ → **해결**: map으로 바꿔 서버 질문 수만큼만 표시 (19번)
 16. ~~ComparisonPage 종합 리포트(47줄)는 아직 mock~~ → **해결**: `session.analysis.report`(문단 배열)로 연결 (11번)
 17. **서버 문자열의 줄바꿈이 `<p>` 안에서 한 줄로 표시됨** (종합 리포트 위치에서는 **해결**: 줄바꿈 기준으로 `<p>`를 나눔. 강점·보완점·질문·RewritePage 사이드바는 그대로): 강점·보완점·질문에 줄바꿈이 있어도 `<p>`가 줄바꿈을 그대로 보여주지 않음. 줄바꿈을 살리려면 스타일(예: `whitespace-pre-line`) 변경이 필요해 디자인 변경에 해당
 18. **RewritePage 질문 `key={q}` 중복 경고**: 서버가 같은 질문 문장을 2개 주면 React가 콘솔에 key 중복 경고를 냄 (화면 표시는 정상). key를 바꾸려면 기존 코드 수정이 필요해 그대로 둠
 19. **완료 훈련이 적으면 mostImproved/focusArea가 null이라 mock이 보임**: 완료한 훈련이 없거나 적어 서버가 `null`을 주면 대시보드에 mock `논지` / `근거 구성`이 표시됨 (사용자 결정 (a): 문구 추가 없이 mock으로 대체). 빈 상태 문구를 넣으려면 문구 승인 필요
+20. **AI 의존도 미표시**: 대시보드 `trend[].aiDependencyRatio`를 그래프에 표시하지 않음. 넣으려면 그래프 2시리즈(칸마다 막대 2개)와 범례가 필요하고, 화면 약 15~25줄·새 태그 6~7개·새 색상 1~2개 규모 (데이터 쪽은 `applyRatios`에 약 3줄)
+21. **demo-chart/chart-bar 스타일이 src에 없어 막대가 안 보일 가능성** (원래부터 있던 문제, 팀원 확인 필요): GrowthDashboardPage 그래프의 `demo-chart`·`chart-bar` 클래스 정의가 `index.css` 등 src 어디에도 없음. 바깥 div에 `display:flex`가 없어 `align-items`·`flex:1`이 적용되지 않고, 막대에 배경색이 없음. 서버 데이터 연결과 무관하게 막대그래프로 보이지 않을 수 있음
 
 그 밖의 임시 처리
 - **첨부파일 업로드 제외**: `createTraining`이 `files` 부분을 보내지 않음. SetupPage는 파일 이름만 보관 중이라, 업로드하려면 `File` 객체 보관이 필요 (화면 파일 수정 필요)

@@ -10,7 +10,7 @@ import React from 'react';
 import { demoAnalysis } from '../mocks/analysis';
 
 export default function GrowthDashboardPage() {
-  const { records, setSelected, ratio, serverGrowth } = useTrainingContext();
+  const { records, setSelected, ratio, serverGrowth, serverStreakDays } = useTrainingContext();
   const { navigate } = useAuthContext();
   return (
     <>
@@ -27,8 +27,8 @@ export default function GrowthDashboardPage() {
           note="훈련 기록 평균 · 시연용"
         />
         <StatCard
-          label="훈련 기록 날짜"
-          value={`${new Set(records.map((r) => r.date)).size}일`}
+          label="연속 완료 일수"
+          value={`${serverStreakDays ?? 0}일`}
         />
       </div>
       <Card>

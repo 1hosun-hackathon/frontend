@@ -68,8 +68,17 @@ export default function ComparisonPage() {
       </Card>
       <Card>
         <h2>사고 확장 질문</h2>
-        <p>① {session.analysis?.questions?.[0] || '이 주장에 반대하는 사람은 어떤 근거를 제시할까요?'}</p>
-        <p>② {session.analysis?.questions?.[1] || '나의 관점을 더 설득력 있게 만드는 실제 사례는 무엇일까요?'}</p>
+        {(session.analysis?.questions?.length
+          ? session.analysis.questions
+          : [
+              '이 주장에 반대하는 사람은 어떤 근거를 제시할까요?',
+              '나의 관점을 더 설득력 있게 만드는 실제 사례는 무엇일까요?',
+            ]
+        ).map((q, i) => (
+          <p key={i}>
+            {i < 20 ? String.fromCharCode(0x2460 + i) : `${i + 1}.`} {q}
+          </p>
+        ))}
         <Button onClick={() => navigate('/rewrite')}>
           {session.recheckCount ? '계속 다시 쓰기 →' : '내 글 다시 쓰기 →'}
         </Button>

@@ -26,7 +26,7 @@ export function TrainingProvider({ children }) {
   const { setRecords, setSaved, saved, setSelected, setMenu, setDeleting } =
     recordsState;
   // 서버 기록으로 records · saved · selected 채우기 (홈·기록·대시보드·마이페이지·완료 화면)
-  const { serverRatio, serverGrowth, reload: reloadRecords } = useServerRecords({
+  const { serverRatio, serverGrowth, serverStreakDays, reload: reloadRecords } = useServerRecords({
     user,
     pathname,
     records: recordsState.records,
@@ -184,7 +184,8 @@ export function TrainingProvider({ children }) {
   const withdraw = () =>
     openModal({
       title: '회원탈퇴를 진행할까요?',
-      message: '회원탈퇴 시 저장한 훈련 기록이 삭제되며 복구할 수 없습니다.',
+      message:
+        '회원탈퇴를 진행하면 로그아웃됩니다. 작성한 훈련 기록은 삭제되지 않고 보존됩니다.',
       danger: true,
       confirmLabel: '탈퇴하기',
       onConfirm: () => {
@@ -213,6 +214,8 @@ export function TrainingProvider({ children }) {
         ratio: serverRatio ?? recordsState.ratio,
         // 대시보드 mostImproved / focusArea의 label ({ strongest, focus }), 불러오기 전에는 null
         serverGrowth,
+        // 대시보드 연속 완료 일수, 불러오기 전에는 null
+        serverStreakDays,
       }}
     >
       {children}

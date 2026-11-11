@@ -26,6 +26,8 @@ export function useServerRecords({
   const [serverRatio, setServerRatio] = useState(null);
   // 대시보드 가장 성장한 항목 / 집중 개선 항목 (label만 사용)
   const [serverGrowth, setServerGrowth] = useState(null);
+  // 대시보드 연속 완료 일수 (streakDays)
+  const [serverStreakDays, setServerStreakDays] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
   const reload = () => setReloadKey((k) => k + 1);
 
@@ -66,6 +68,7 @@ export function useServerRecords({
             strongest: dashboard.mostImproved?.label || null,
             focus: dashboard.focusArea?.label || null,
           });
+        if (dashboard) setServerStreakDays(dashboard.streakDays ?? 0);
       })
       .catch(() => {});
     return () => {
@@ -103,5 +106,5 @@ export function useServerRecords({
     };
   }, [user, pathname, selected?.id]);
 
-  return { serverRatio, serverGrowth, reload };
+  return { serverRatio, serverGrowth, serverStreakDays, reload };
 }

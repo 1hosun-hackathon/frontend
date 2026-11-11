@@ -220,6 +220,54 @@
 - 13·16·19번 등에서 보고한 "태그·속성 시퀀스 동일" 자동 점검은, 여러 줄에 걸친 태그의 속성이 비교에서 빠지는 허점이 있었음
 - 태그를 하나씩 읽는 방식으로 고친 스크립트로 화면 4개(ComparisonPage·RewritePage·Criteria·GrowthDashboardPage)를 dev와 다시 비교함 → **승인한 변경(질문 `<p>` map, 세 번째 카드 label) 외에 태그·속성 변화 없음**
 
+### 22. 첨부파일 업로드 — 서버 API files 파트가 있으나 화면이 파일 이름만 저장해 File 객체가 없었음
+- **파일**: `src/api/trainings.js`, `src/hooks/useWriting.js`, `src/pages/SetupPage.jsx`, `src/context/TrainingContext.jsx`
+- **바꾼 이유**: `POST /api/v1/trainings`는 `files` 파트(0~5개, 각 10MB 이하)를 받지만, 설정 화면이 첨부를 파일 이름만 저장해서 업로드할 File 객체가 없었고 `createTraining`도 `request` 파트만 보냈음
+- **바꾼 곳**
+  - `trainings.js` 10-11줄: 주석 수정, `createTraining` 인자에 `files = []` 추가. 22줄 뒤: `files.forEach((file) => form.append('files', file))` (첨부가 없으면 `files` 파트를 보내지 않음)
+  - `useWriting.js`
+    - 파일 상단: 검증 기준(확장자 `pdf·ppt·pptx·doc·docx·txt·md·png·jpg·jpeg` = SetupPage `accept`와 동일, 최대 5개, 10MB), `createErrorText`(413 → 크기 안내, 첨부가 있을 때 400 → 형식 안내, 그 외 기존 문구)
+    - 50줄: 상태 setter를 `setFileNames`로 바꾸고 `fileObjectsRef`와 감싸는 `setFiles` 추가 (File 배열이면 검증 후 이름은 `files`, 객체는 ref에 보관. 문자열 배열이면 기존처럼 이름만)
+    - `startNewWriting`: 첨부 목록과 ref를 비움 (**기존 버그 수정**: 새 글을 시작해도 이전 글의 첨부 이름이 남았음)
+    - `begin`: `createTraining`에 `files` 전달, 성공 시 `session.attachments` 저장 및 업로드 개수 확인, 실패 시 `createErrorText`로 안내
+  - `SetupPage.jsx` 48줄: `setFiles([...e.target.files].map((f) => f.name))` → `setFiles([...e.target.files])` (File 객체를 그대로 넘김)
+  - `SetupPage.jsx` 50줄 문구: `PDF, PPT, 문서, 이미지 · 시연용 파일 선택` → `PDF, PPT, 문서, 이미지 · 파일 선택` (글자만 변경)
+  - `TrainingContext.jsx`: 새로고침 복구 시 서버 `attachments`를 `session.attachments`에 보관 — `/writing` 복구 effect와 `/analysis`·`/rewrite` 복구 effect의 객체에 `attachments: w.attachments ?? [],` 각 1줄씩 추가 (기존 줄 삭제·변경 없음, 화면 표시 없음)
+- **추가한 notify 문구** (새 UI 없음, 기존 notify 모달 사용)
+  - 파일을 고를 때: "첨부하지 못한 파일이 있어요." + 해당 항목 — "`파일명` · 올릴 수 없는 형식" / "`파일명` · 10MB 초과" / "최대 5개까지 올릴 수 있어 앞의 5개만 첨부했어요."
+  - 시작 버튼, 서버 413: "첨부파일 크기가 너무 커요. 각 파일은 10MB 이하로 올려 주세요."
+  - 시작 버튼, 첨부가 있을 때 서버 400: "첨부할 수 없는 형식의 파일이 있어요. PDF, PPT, 문서, 이미지 파일만 올릴 수 있어요."
+  - 업로드 확인: 응답 `attachments` 수 < 보낸 수 → "일부 첨부파일이 업로드되지 않았어요. 글 작성은 계속할 수 있어요."
+- **유지한 것**: SetupPage 태그·속성·줄 수(고친 점검 스크립트로 확인, 바뀐 것은 `onChange` 값과 50줄 글자뿐), 51-53줄 목록 출력(`files`는 여전히 이름 배열), `useWriting` 반환 키 13개(`setFiles` 키에 감싸는 함수), `createTraining`의 기존 호출 방식(`files` 기본값 `[]`), 첨부가 없을 때의 요청 형태
+- **되돌리는 법**: `git checkout dev -- src/pages/SetupPage.jsx src/hooks/useWriting.js src/api/trainings.js src/context/TrainingContext.jsx`
+
+### 23. 제출 후 뒤로가기 → 재제출 무반응 버그
+- **파일**: `src/hooks/useWriting.js`
+- **바꾼 이유**: 초안 제출 후 서버 상태는 ANALYZING/COMPARED인데, 뒤로가기로 `/writing`에 돌아와 다시 제출하면 `POST /draft`가 409로 거절되고 화면에 반응이 없었음 ("나중에 확인할 것"의 버그). **"무반응"의 정확한 원인은 확인되지 않음**: 기존 코드도 409를 받으면 오류 모달을 띄우게 되어 있었음. 변경 후에는 뒤로가기 상황에서 `/draft` 자체를 호출하지 않으므로 이 경로를 타지 않음
+- **바꾼 곳**
+  - import: `getTraining` 추가
+  - `resumeSubmitted()` 추가: `GET /trainings/{id}`로 서버 상태를 다시 확인 → DRAFTING이면 제출 진행(false 반환), ANALYZING은 결과 대기 이어가기, COMPARED는 결과 조회 후 `/analysis`(기존 `waitForAnalysis` 사용, 대기 모달이 잠깐 표시됨), REWRITING은 분석 결과·수정본을 session에 채우고 `/rewrite`, 그 밖의 상태(COMPLETED 등)는 notify "이미 제출한 글이에요."
+  - `submit`: session 상태가 DRAFTING이 아니면 `/draft`를 호출하지 않고 `resumeSubmitted()` 실행. 정상 제출 경로에서 409가 오면 같은 처리
+- **유지한 것**: 정상 제출 경로, 반환 키·함수 인자, 화면 파일 무수정. `/writing` 진입 시 자동 이동은 넣지 않음 (뒤로가기로 돌아오자마자 앞으로 밀려나는 문제 때문에, 제출 버튼과 409 응답 시점에만 처리)
+- **되돌리는 법**: `git checkout dev -- src/hooks/useWriting.js` (2·6·9·22번 변경까지 함께 되돌아감)
+
+### 24. 첨부 목록 시각화와 파일 빼기 — 첨부 업로드 연결 후 사용자가 파일을 확인·제거할 UI가 필요해 추가
+- **파일**: `src/hooks/useWriting.js`, `src/pages/SetupPage.jsx`
+- **바꾼 이유**: 22번에서 실제 업로드가 연결됐지만, 화면 목록은 파일 이름만 보여주고 잘못 고른 파일을 뺄 방법이 없었음
+- **결정 내용**
+  - **이어 붙이기**: 파일을 더 고르면 기존 목록을 덮어쓰지 않고 뒤에 이어 붙임(최대 5개 유지). 같은 파일(이름·크기·수정 시각 동일)은 "`파일명` · 이미 추가한 파일"로 안내하고 건너뜀
+  - **input 값 초기화**: 고른 직후 `e.target.value = ''`. 브라우저가 input 옆에 그리는 "파일 N개" 표시는 항상 "선택된 파일 없음"이 되고 아래 목록이 유일한 기준이 됨. 뺐던 파일도 다시 고를 수 있음
+- **바꾼 곳**
+  - `useWriting.js`: `formatFileSize`(1024KB 미만 KB 정수·최소 1KB, 이상 MB 소수 1자리), `toFileItem` 추가. `files` 상태를 이름 배열 → `[{ name, size, sizeLabel }]`로 변경(File 객체는 `fileObjectsRef`에 같은 순서로 보관). 검증을 `applyFiles(base, list)`로 묶고 중복 검사 추가. `setFiles`(목록 교체, 기존 키·동작 유지), `addFiles`(이어 붙이기), `removeFile(index)`(목록과 ref에서 함께 제거). 반환 키에 `addFiles`, `removeFile` 추가
+  - `SetupPage.jsx`: `lucide-react`의 `X` import 1줄, 9줄 받아오는 값 `setFiles` → `addFiles, removeFile`, 48줄 `onChange`에서 `addFiles` 호출 후 선택값 초기화, 51-53줄 목록 교체
+- **추가한 UI** (고친 점검 스크립트로 dev 대비 변화 확인)
+  - 목록 행 `<div key={이름-순번}>`: `mt-2 flex items-center justify-between gap-3 rounded-lg bg-[#F5F5F2] px-3 py-2 text-sm text-[#59654F]`
+  - 파일 이름 `<span>`: `min-w-0 truncate` / 크기 `<span>`: `text-[#7B8078]`, 내용 ` · 50KB`
+  - 빼기 `<button type="button">`: `shrink-0 rounded-md p-1 text-[#7B8078] hover:bg-[#E8EAE6]`, `aria-label="파일명 첨부 빼기"`, 안에 `<X size={14} />`
+  - 색·모서리·글자 크기는 기존 화면 톤(InfoBox 배경 `#F5F5F2`, 기록 화면 메뉴의 `rounded-lg text-sm`, 진한 초록 `#59654F`, 안내 회색 `#7B8078`, 구분선 `#E8EAE6`)을 따름
+- **유지한 것**: input의 `type`·`multiple`·`accept`, 50줄 문구, 다른 입력 필드. `files`를 쓰는 곳은 SetupPage뿐이라 다른 화면 영향 없음. useWriting 기존 반환 키 13개
+- **되돌리는 법**: `git checkout dev -- src/pages/SetupPage.jsx src/hooks/useWriting.js` (useWriting의 이전 변경까지 함께 되돌아감)
+
 ## 신규 파일 목록과 역할
 - `src/api/client.js`: 공통 fetch 래퍼. access token을 메모리에 보관하고, 401이 오면 1회 재발급 후 재시도. `ApiError` 정의
 - `src/api/auth.js`: 회원가입, 로그인, 재발급, 로그아웃, 아이디 중복 확인 API
@@ -242,7 +290,7 @@
 3. **완료 화면 성장 리포트·점수 칸·잘한 점/보완할 점은 API 없음 (mock 유지)**: 완료 화면의 Criteria(`completion` 모드)도 mock. 완료 화면에서 실제 값은 주제·최초 초안·최종 글·수정 과정
 4. ~~ComparisonPage 질문 `<p>` 2개 고정~~ → **해결**: `<p>`를 map으로 바꿔 서버 질문을 전부 표시 (19번)
 5. ~~새로고침하면 versions(수정 과정)가 사라짐~~ → **해결**: 완료 화면에서 `GET /trainings/{id}/detail`의 `revisions`로 채움 (`useServerRecords`)
-6. **제출 후 뒤로가기하면 다시 제출되지 않는 버그**: 서버 상태가 COMPARED라 `POST /draft`가 409로 거절되는 것으로 추정. 재현 방법은 아래 "나중에 확인할 것" 참고. (재검사 후 뒤로가기는 `/rewrite` 진입 effect가 REWRITING으로 되돌려 줘서 문제없음)
+6. ~~제출 후 뒤로가기하면 다시 제출되지 않는 버그~~ → **해결**: 제출 시 서버 상태를 확인해 상태에 맞는 화면으로 이동, 409도 같은 처리 (23번). "무반응"의 정확한 원인은 확인되지 않음
 7. **409 포괄 문구**: 재검사 409를 "변경 없음"과 "상태 불일치"를 포괄하는 문구로 안내 중. 에러 JSON 형태가 확인되면 `NO_CHANGES` / `TRAINING_INVALID_STATUS`를 구분해 `revisionErrorText`·`completeErrorText`를 수정. `ApiError`가 `body.message`를 가정하는 부분(`src/api/client.js`)도 함께 확인
 8. **writingType 논설문 고정**: `src/api/trainings.js`의 `toServerWritingType`이 항상 `'논설문'`을 반환. 백엔드가 enum을 늘리면 `(genre) => genre;`로 한 줄 교체. 새로고침하면 글 종류가 "논설문"으로 보이는 문제도 함께 해결됨. 화면 선택지 6개와 `models/training.js`의 기본값은 그대로 둠
 9. ~~대시보드 세 번째 카드(streakDays) mock 유지~~ → **해결**: 라벨을 "연속 완료 일수"로 바꾸고 서버 `streakDays` 표시, 없으면 0 (17번)
@@ -261,16 +309,22 @@
 22. **timerEndsAt은 UTC로 해석 (시간대 표시 없음)**: 서버가 UTC 시각을 시간대 표시 없이 전달함. 확인된 실제 응답(`POST /trainings`, 한국 시각 00:09경 생성): `startedAt "2026-11-11T15:09:20.907969353"`, `timerEndsAt "2026-11-11T15:39:20.907969353"`. 그래서 `src/hooks/timerClock.js`는 시간대 표시가 없으면 `Z`를 붙여 해석함(표시가 있으면 그대로). **서버가 UTC 표기를 유지한다는 전제이며, 서버 시간대 설정이 바뀌면 재확인 필요.** 백엔드에 시간대 포함(ISO 8601 offset) 요청 권장
 23. **타이머 안전장치와 한계**: 계산한 남은 시간이 `timerMinutes × 60 + 60`초보다 크면 시간대 오류로 보고 기존 방식(`분 × 60`, 1초씩 감소)으로 대체. 반대 방향 오류(종료 시각이 실제보다 이르게 해석되어 바로 0이 되는 경우)는 정상 종료와 구분할 수 없어 막지 못함. 처음 KST로 가정했을 때 타이머가 0초로 표시된 증상이 바로 이 경우였고, UTC 해석으로 바꿔 해결함(22번)
 24. **배포 시 `Access-Control-Expose-Headers: Date` 필요**: 시계 차이 보정은 응답 `Date` 헤더를 읽을 수 있을 때만 동작. 개발 환경은 Vite 프록시로 같은 출처라 읽히지만, 배포(다른 출처)에서는 백엔드가 이 헤더를 노출해야 함. 못 읽으면 보정 없이 브라우저 시계 사용
+25. **새로고침하면 선택한 첨부가 사라짐**: File 객체는 메모리(ref)에만 있고 저장소에 보관할 수 없음. 설정 화면에서 새로고침하면 이름 목록과 함께 비워지므로 다시 선택해야 함 (이미 생성된 훈련의 첨부는 서버에 남음)
+26. **합계 용량으로 413 가능성**: 각 파일이 10MB 이하여도 여러 개를 합친 요청 크기가 백엔드 `spring.servlet.multipart.max-request-size`(기본 10MB)나 프록시 제한을 넘으면 413. 백엔드 설정 확인 필요
+27. **.txt/.md 허용 여부 미확인**: 화면 `accept`와 클라이언트 검증은 `.txt`, `.md`를 허용하지만 명세는 "PDF·PPT·문서·이미지"라 서버가 받는지 확인 필요. 거절되면 400 형식 안내가 표시됨. 또 400은 다른 입력 오류일 수도 있어 원인 구분은 에러 형식 확정 후(7번)
+28. **뒤로가기 후 재생성**: 훈련 시작 후 뒤로가기로 설정 화면에 돌아와 다시 시작하면 새 훈련이 하나 더 생성되고 첨부도 다시 업로드됨 (6번 버그와 같은 범주)
+29. **첨부 목록 화면 표시 미구현**: 서버 응답 `attachments`(attachmentId·fileName·fileSize)는 `session.attachments`에 보관만 하고, 초안 작성·다시 쓰기 화면에는 표시하지 않음 (표시하려면 WritingLayout 등 화면 수정 필요)
+30. ~~같은 이름 파일 2개를 고르면 key 중복 경고~~ → **해결**: 목록 key를 `이름-순번`으로 바꿈. input 옆 "파일 N개" 표시도 선택값 초기화로 목록과 어긋나지 않음 (24번)
 
 그 밖의 임시 처리
-- **첨부파일 업로드 제외**: `createTraining`이 `files` 부분을 보내지 않음. SetupPage는 파일 이름만 보관 중이라, 업로드하려면 `File` 객체 보관이 필요 (화면 파일 수정 필요)
+- ~~첨부파일 업로드 제외~~ → **해결**: File 객체를 ref에 보관하고 `files` 파트로 업로드 (22번)
 - ~~타이머는 클라이언트 기준~~ → **해결**: 서버 `timerEndsAt` 기준으로 남은 시간 계산 (21번)
 - ~~아이디 중복 확인 UI 없음~~ → **해결**: 회원가입 아이디 입력칸 onBlur로 확인 (20번)
 - **배포 시 백엔드 CORS 설정 필요, 프록시는 개발 전용**: `vite.config.js`의 `server.proxy`는 dev 서버에서만 동작함. 배포 사이트에서는 백엔드가 프론트 도메인을 허용하고 `Access-Control-Allow-Credentials: true`를 설정해야 하며, refresh 쿠키는 `SameSite=None; Secure`여야 함. 백엔드 CORS 설정이 끝나면 프록시를 제거하고 `.env.local`에 다시 `https://mind-test.store`를 넣어도 됨
 - ~~완료 후 기록은 아직 로컬~~ → **해결**: `complete`가 로컬 기록에 추가한 항목은 완료 화면 진입 시 서버 목록·상세로 교체됨
 
 ## 나중에 확인할 것
-- **[버그] 초안 제출 후 뒤로가기하면 다시 제출되지 않음**
+- ~~[버그] 초안 제출 후 뒤로가기하면 다시 제출되지 않음~~ → **해결 (23번)**. "무반응"의 정확한 원인은 확인되지 않았고, 서버 상태 확인 후 이동하는 방식으로 처리함
   - 재현 방법: ① 새 글 작성 → 초안 작성 → "초안 제출 · 비교 분석" ② 분석이 끝나 `/analysis`로 이동 ③ 브라우저 뒤로가기로 `/writing`에 돌아감 ④ 초안을 고치고 다시 "초안 제출"을 누름 → 제출되지 않음 (에러 모달 또는 반응 없음)
   - 추정 원인 (확인 전): 제출 후 서버의 훈련 상태가 `COMPARED`로 바뀌는데, `POST /trainings/{id}/draft`는 `DRAFTING` 상태에서만 허용됨 → 409. 또 `session.analysisId`가 설정돼 있어 이 화면의 임시저장은 로컬에만 저장됨
   - 처리 방향 (미정): 제출 후 `/writing`에 다시 들어오면 `/analysis`로 보내거나, 수정은 "다시 쓰기(재검사)" 흐름으로 안내

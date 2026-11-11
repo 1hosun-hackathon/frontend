@@ -77,6 +77,7 @@ export function TrainingProvider({ children }) {
           requirements: w.requirements ?? '',
           minutes: w.timerMinutes ?? null,
           timerEndsAt: w.timerEndsAt ?? null,
+          attachments: w.attachments ?? [],
           draft: w.editorContent ?? '',
           pendingAnalysisId:
             w.status === 'ANALYZING' ? w.latestAnalysisId : null,
@@ -131,6 +132,7 @@ export function TrainingProvider({ children }) {
           recheckCount: seqNo,
           analysis: toAnalysisView(analysis),
           analysisId: w.latestAnalysisId ?? null,
+          attachments: w.attachments ?? [],
           pendingAnalysisId:
             w.status === 'ANALYZING' ? w.latestAnalysisId : null,
         }));

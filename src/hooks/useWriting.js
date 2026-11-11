@@ -3,6 +3,7 @@ import { blank } from '../models/training';
 import { today } from '../lib/date';
 import {
   createTraining,
+  getTraining,
   saveTemp,
   submitDraft,
   submitRevision,
@@ -20,6 +21,29 @@ const RESUME_PATH = {
   ANALYZING: '/writing',
   COMPARED: '/analysis',
   REWRITING: '/rewrite',
+};
+// 첨부파일 검증 기준 (SetupPage input의 accept와 같은 확장자, 명세: 0~5개, 각 10MB 이하)
+const ALLOWED_FILE_EXT = ['pdf', 'ppt', 'pptx', 'doc', 'docx', 'txt', 'md', 'png', 'jpg', 'jpeg'];
+const MAX_FILES = 5;
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+// 파일 크기 표시: 1024KB 미만은 KB(정수, 최소 1KB), 이상은 MB(소수 1자리)
+const formatFileSize = (bytes) => {
+  if (typeof bytes !== 'number') return '';
+  const kb = Math.max(1, Math.round(bytes / 1024));
+  return kb < 1024 ? `${kb}KB` : `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+};
+const toFileItem = (f) => ({
+  name: f.name,
+  size: f.size,
+  sizeLabel: formatFileSize(f.size),
+});
+// 훈련 생성 에러: 413 = 파일 크기, 첨부가 있을 때 400 = 파일 형식으로 안내 (에러 JSON 형식이 확정되지 않아 HTTP 상태로 구분)
+const createErrorText = (err, hasFiles) => {
+  if (err?.status === 413)
+    return '첨부파일 크기가 너무 커요.\n각 파일은 10MB 이하로 올려 주세요.';
+  if (err?.status === 400 && hasFiles)
+    return '첨부할 수 없는 형식의 파일이 있어요.\nPDF, PPT, 문서, 이미지 파일만 올릴 수 있어요.';
+  return errorText(err, '글 작성을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.');
 };
 // 재검사 에러: 에러 JSON 형식이 확정되지 않아 HTTP 상태로 구분 (409는 NO_CHANGES·상태 불일치 모두 포괄)
 const revisionErrorText = (err) => {
@@ -47,11 +71,68 @@ export function useWriting({
   closeModal = () => {},
 }) {
   const [session, setSession] = useState(blank);
-  const [files, setFiles] = useState([]);
+  // 화면 목록용: [{ name, size, sizeLabel }] (File 객체는 fileObjectsRef에 같은 순서로 보관)
+  const [files, setFileNames] = useState([]);
+  // 업로드할 실제 File 객체 (이름 목록 files와 함께 갱신. 메모리에만 있어 새로고침하면 사라짐)
+  const fileObjectsRef = useRef([]);
+  // 검증 공통: 형식·10MB·중복을 걸러내고, 기존 목록(base)과 합쳐 최대 5개까지 반영
+  const applyFiles = (base, list) => {
+    const items = Array.from(list ?? []);
+    const problems = [];
+    const sameFile = (a, b) =>
+      a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+    let valid = items.filter((f) => {
+      const ext = f.name.includes('.') ? f.name.split('.').pop().toLowerCase() : '';
+      if (!ALLOWED_FILE_EXT.includes(ext)) {
+        problems.push(`${f.name} · 올릴 수 없는 형식`);
+        return false;
+      }
+      if (f.size > MAX_FILE_SIZE) {
+        problems.push(`${f.name} · 10MB 초과`);
+        return false;
+      }
+      if (base.some((b) => sameFile(b, f))) {
+        problems.push(`${f.name} · 이미 추가한 파일`);
+        return false;
+      }
+      return true;
+    });
+    let next = [...base, ...valid];
+    if (next.length > MAX_FILES) {
+      problems.push(`최대 ${MAX_FILES}개까지 올릴 수 있어 앞의 ${MAX_FILES}개만 첨부했어요.`);
+      next = next.slice(0, MAX_FILES);
+    }
+    fileObjectsRef.current = next;
+    setFileNames(next.map(toFileItem));
+    if (problems.length)
+      notify(`첨부하지 못한 파일이 있어요.\n${problems.join('\n')}`);
+  };
+  // 기존 setFiles: 목록을 새로 고른 파일로 바꿈 (File 배열이 아니면 이름만 저장)
+  const setFiles = (list) => {
+    const items = Array.from(list ?? []);
+    const isFile = (f) => typeof File !== 'undefined' && f instanceof File;
+    if (!items.every(isFile)) {
+      fileObjectsRef.current = [];
+      setFileNames(items.map((name) => ({ name, size: null, sizeLabel: '' })));
+      return;
+    }
+    applyFiles([], items);
+  };
+  // 파일을 더 고르면 기존 목록 뒤에 이어 붙임 (최대 5개, 같은 파일은 건너뜀)
+  const addFiles = (list) => applyFiles(fileObjectsRef.current, list);
+  // 목록의 index번째 파일을 화면 목록과 업로드 대상(ref) 모두에서 제거
+  const removeFile = (index) => {
+    const next = fileObjectsRef.current.filter((_, i) => i !== index);
+    fileObjectsRef.current = next;
+    setFileNames((prev) => prev.filter((_, i) => i !== index));
+  };
   const busy = useRef(false);
   const update = (k, v) => setSession((s) => ({ ...s, [k]: v }));
   const startNewWriting = () => {
     clearTrainingId();
+    // 이전 글의 첨부가 남지 않도록 비움 (기존에는 비우지 않던 버그)
+    fileObjectsRef.current = [];
+    setFileNames([]);
     setSession(blank());
     navigate('/setup');
   };
@@ -107,11 +188,13 @@ export function useWriting({
         : Math.max(1, Number(session.minutes) || 15);
     if (busy.current) return;
     busy.current = true;
+    const attachedFiles = fileObjectsRef.current;
     createTraining({
       topic: session.topic.trim(),
       genre: session.genre,
       requirements: session.requirements,
       minutes: min,
+      files: attachedFiles,
     })
       .then((res) => {
         setTrainingId(res.trainingId);
@@ -119,12 +202,14 @@ export function useWriting({
         update('status', 'DRAFTING');
         update('minutes', min);
         update('timerEndsAt', res.timerEndsAt ?? null);
+        update('attachments', res.attachments ?? []);
         setSeconds(remainingSeconds(res.timerEndsAt, min) ?? (min ?? 15) * 60);
         navigate('/writing');
+        // 업로드 확인: 서버가 돌려준 첨부 수가 보낸 수보다 적으면 안내
+        if ((res.attachments?.length ?? 0) < attachedFiles.length)
+          notify('일부 첨부파일이 업로드되지 않았어요.\n글 작성은 계속할 수 있어요.');
       })
-      .catch((err) =>
-        notify(errorText(err, '글 작성을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.')),
-      )
+      .catch((err) => notify(createErrorText(err, attachedFiles.length > 0)))
       .finally(() => {
         busy.current = false;
       });
@@ -209,6 +294,36 @@ export function useWriting({
       () => retryAnalysis(analysisId).then(() => waitForAnalysis(analysisId)),
       '분석을 다시 시도하지 못했어요. 잠시 후 다시 시도해 주세요.',
     );
+  // 서버 상태를 다시 확인해 이미 제출된 훈련이면 상태에 맞는 화면으로 이동.
+  // 처리했으면 true, 서버가 아직 DRAFTING이면 false(호출한 쪽에서 제출 진행)
+  const resumeSubmitted = async () => {
+    const w = await getTraining(session.trainingId);
+    const analysisId = w?.latestAnalysisId;
+    if (w?.status === 'DRAFTING') return false;
+    // ANALYZING: 결과 대기 이어가기 / COMPARED: 결과 조회 후 /analysis (waitForAnalysis가 이동까지 처리)
+    if ((w?.status === 'ANALYZING' || w?.status === 'COMPARED') && analysisId) {
+      await waitForAnalysis(analysisId);
+      return true;
+    }
+    if (w?.status === 'REWRITING') {
+      const analysis = analysisId
+        ? await getAnalysis(analysisId).catch(() => null)
+        : null;
+      setSession((s) => ({
+        ...s,
+        status: 'REWRITING',
+        analysisId: analysisId ?? s.analysisId,
+        analysis: analysis ? toAnalysisView(analysis) : s.analysis,
+        ai: analysis?.aiWriting?.content || s.ai,
+        final: w.editorContent ?? s.final,
+        pendingAnalysisId: null,
+      }));
+      navigate('/rewrite');
+      return true;
+    }
+    notify('이미 제출한 글이에요.');
+    return true;
+  };
   const submit = () => {
     if (!session.draft.trim()) {
       notify('초안을 작성해 주세요.');
@@ -226,11 +341,28 @@ export function useWriting({
       );
       return;
     }
+    const submitAndWait = () =>
+      submitDraft(session.trainingId, session.draft).then((res) =>
+        waitForAnalysis(res.analysisId),
+      );
+    // 이미 제출한 훈련(제출 후 뒤로가기 등): 다시 제출하지 않고 서버 상태에 맞는 화면으로
+    if (session.status && session.status !== 'DRAFTING') {
+      runAnalysisTask(
+        () =>
+          resumeSubmitted().then((handled) => (handled ? null : submitAndWait())),
+        '초안을 제출하지 못했어요. 잠시 후 다시 시도해 주세요.',
+      );
+      return;
+    }
     runAnalysisTask(
       () =>
-        submitDraft(session.trainingId, session.draft).then((res) =>
-          waitForAnalysis(res.analysisId),
-        ),
+        submitAndWait().catch((err) => {
+          // 409: 서버에서는 이미 제출된 상태 → 같은 처리
+          if (err?.status !== 409) throw err;
+          return resumeSubmitted().then((handled) => {
+            if (!handled) throw err;
+          });
+        }),
       '초안을 제출하지 못했어요. 잠시 후 다시 시도해 주세요.',
     );
   };
@@ -311,6 +443,8 @@ export function useWriting({
     setSession,
     files,
     setFiles,
+    addFiles,
+    removeFile,
     update,
     startNewWriting,
     saveDraft,

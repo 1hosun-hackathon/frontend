@@ -7,8 +7,8 @@ export const toServerWritingType = (genre) => '논설문';
 
 // POST /api/v1/trainings (multipart/form-data)
 // request 파트(JSON) → { trainingId, status, startedAt, timerEndsAt, attachments }
-// 첨부파일(files 파트)은 이번 범위에서 제외 — 보내지 않는다.
-export function createTraining({ topic, genre, requirements, minutes }) {
+// files 파트: 첨부파일 File 객체 0~5개 (각 10MB 이하). 없으면 보내지 않는다.
+export function createTraining({ topic, genre, requirements, minutes, files = [] }) {
   const payload = {
     topic,
     writingType: toServerWritingType(genre),
@@ -20,6 +20,7 @@ export function createTraining({ topic, genre, requirements, minutes }) {
     'request',
     new Blob([JSON.stringify(payload)], { type: 'application/json' }),
   );
+  files.forEach((file) => form.append('files', file));
   return request('/api/v1/trainings', { method: 'POST', body: form });
 }
 

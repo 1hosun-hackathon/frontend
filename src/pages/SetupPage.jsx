@@ -4,9 +4,10 @@ import Button from '../components/Button';
 import { useTrainingContext } from '../context/TrainingContext';
 import React from 'react';
 import { Steps } from '../components/Steps';
+import { X } from 'lucide-react';
 
 export default function SetupPage() {
-  const { session, custom, files, setCustom, setFiles, update, begin } =
+  const { session, custom, files, setCustom, addFiles, removeFile, update, begin } =
     useTrainingContext();
   return (
     <>
@@ -45,11 +46,33 @@ export default function SetupPage() {
             type="file"
             multiple
             accept=".pdf,.ppt,.pptx,.doc,.docx,.txt,.md,.png,.jpg,.jpeg"
-            onChange={(e) => setFiles([...e.target.files].map((f) => f.name))}
+            onChange={(e) => {
+              addFiles([...e.target.files]);
+              // 선택값을 비워 input 옆 표시와 목록이 어긋나지 않게 하고, 같은 파일도 다시 고를 수 있게 함
+              e.target.value = '';
+            }}
           />
-          <MutedText>PDF, PPT, 문서, 이미지 · 시연용 파일 선택</MutedText>
-          {files.map((f) => (
-            <div key={f}>{f}</div>
+          <MutedText>PDF, PPT, 문서, 이미지 · 파일 선택</MutedText>
+          {files.map((f, i) => (
+            <div
+              key={`${f.name}-${i}`}
+              className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-[#F5F5F2] px-3 py-2 text-sm text-[#59654F]"
+            >
+              <span className="min-w-0 truncate">
+                {f.name}
+                {f.sizeLabel && (
+                  <span className="text-[#7B8078]"> · {f.sizeLabel}</span>
+                )}
+              </span>
+              <button
+                type="button"
+                className="shrink-0 rounded-md p-1 text-[#7B8078] hover:bg-[#E8EAE6]"
+                aria-label={`${f.name} 첨부 빼기`}
+                onClick={() => removeFile(i)}
+              >
+                <X size={14} />
+              </button>
+            </div>
           ))}
         </div>
         <FieldLabel>집중 작성 시간</FieldLabel>

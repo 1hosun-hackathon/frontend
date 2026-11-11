@@ -268,6 +268,32 @@
 - **유지한 것**: input의 `type`·`multiple`·`accept`, 50줄 문구, 다른 입력 필드. `files`를 쓰는 곳은 SetupPage뿐이라 다른 화면 영향 없음. useWriting 기존 반환 키 13개
 - **되돌리는 법**: `git checkout dev -- src/pages/SetupPage.jsx src/hooks/useWriting.js` (useWriting의 이전 변경까지 함께 되돌아감)
 
+### 25. 대시보드 그래프 — 원래 디자인(선 그래프)대로 복원 + 서버 trend/증감값 연결
+- **파일**: `src/hooks/chartPath.js`(새 파일), `src/hooks/useServerRecords.js`, `src/pages/GrowthDashboardPage.jsx`
+- **바꾼 이유**: 대시보드 그래프가 팀 디자인 시안(선 그래프 2개 + 범례 + 증감 카드)과 달리 `div` 막대로 되어 있었고, `demo-chart`·`chart-bar` 스타일이 src에 없어 막대가 보이지 않을 가능성이 있었음(21번). 서버 `trend[].aiDependencyRatio`와 증감값도 표시되지 않았음(20번)
+- **바꾼 곳**
+  - `chartPath.js`: `CHART_COLORS`(색 상수를 한 곳에 모음 — 시안과 비교해 바꿀 때 여기만 수정), `toY`(비율 → SVG y, 5~95 범위), `smoothPath`(Catmull-Rom → 3차 베지어 곡선, 점 2개 미만이면 빈 값), `aiChangeLabel`·`selfChangeLabel`(증감 문구)
+  - `useServerRecords.js`: `serverGrowth`에 `trend`(`{ trainingId, self, ai }`, 두 비율이 숫자인 항목만, 오래된 순), `aiChange`, `selfChange` 추가 (A안: TrainingContext 수정 없음)
+  - `GrowthDashboardPage.jsx`
+    - import와 `trend`·`selfPath`·`aiPath` 계산 3줄
+    - 27줄 StatCard note 문구: `"훈련 기록 평균 · 시연용"` → `"최근 훈련 기준"` (글자만)
+    - 36-39줄 설명 문구: "기록별 자기 사고 구성 비율을 확인해 보세요. 현재 수치는 시연용 예시입니다." → "최근 훈련에서 나타난 사고 구성의 변화를 살펴보세요." (시안 문구)
+    - 40-56줄: `div` 막대 그래프 삭제 → SVG 선 그래프 + 범례 + 증감 카드 2개
+- **추가한 UI**
+  - 그래프 영역 `<div className="relative mt-6 rounded-xl p-4">` (배경 `CHART_COLORS.background`)
+  - `<svg viewBox="0 0 100 100" preserveAspectRatio="none" className="block h-48 w-full sm:h-56" role="img">`: 가로 격자선 4개(0·25·50·75%), 선 2개(자기 사고 구성 초록, AI 의존도 회색, 마커 없음, `vectorEffect="non-scaling-stroke"`로 두께 일정)
+  - 데이터 부족 안내(trend 2개 미만): "훈련을 2회 이상 완료하면 변화 그래프가 나타나요." (`text-sm text-[#7B8078]`, 그래프 영역 가운데)
+  - 범례 `<div className="mt-3 flex flex-wrap gap-4 text-xs text-[#7B8078]">`: "● 자기 사고 구성", "● AI 의존도" (점 `h-2 w-2 rounded-full`, 선과 같은 색)
+  - 증감 카드 2개(기존 `TwoColumnGrid` + `InfoBox` 재사용): "AI 의존 감소율", "자기 구성 증가율"
+- **증감 문구 규칙** (서버 값은 최근 − 첫의 %p, 표기는 `%`로 결정)
+  - AI 의존도: 음수 → "N% 개선", 양수 → "N% 증가", 0 → "변화 없음", null → "-"
+  - 자기 사고 구성: 양수 → "N% 개선", 음수 → "N% 감소", 0 → "변화 없음", null → "-"
+  - 소수 첫째 자리 반올림, `.0`이면 정수 (12.0 → 12, 5.46 → 5.5). 반올림해 0이면 "변화 없음"
+- **새로 쓴 색**: `#F9FAF8`(그래프 영역 배경, 시안), `#A9AEA6`(AI 의존도 선). 자기 사고 구성 선은 기존 `#727D67`, 격자선은 기존 `#E8EAE6`
+- **사라진 것**: 막대 아래 기록별 날짜 표시(`MM.DD`), `demo-chart`·`chart-bar` 클래스, 비율이 없을 때의 70% 대체값 (시안에 날짜가 없어 x축 날짜는 넣지 않음)
+- **유지한 것**: 위 카드 3개(27줄 note 글자 외), 성장/집중 항목, 최근 완료한 훈련 카드 (줄 단위로 동일 확인). TrainingContext 무수정. 새 라이브러리 없음(SVG)
+- **되돌리는 법**: `git checkout dev -- src/pages/GrowthDashboardPage.jsx src/hooks/useServerRecords.js` 후 `src/hooks/chartPath.js` 삭제
+
 ## 신규 파일 목록과 역할
 - `src/api/client.js`: 공통 fetch 래퍼. access token을 메모리에 보관하고, 401이 오면 1회 재발급 후 재시도. `ApiError` 정의
 - `src/api/auth.js`: 회원가입, 로그인, 재발급, 로그아웃, 아이디 중복 확인 API
@@ -282,6 +308,7 @@
 - `src/api/home.js`: 홈, 대시보드, 내 정보(현재 미사용), 회원탈퇴 API
 - `src/api/recordView.js`: 목록·상세 응답을 화면의 records 모양으로 변환, 날짜 `YYYY.MM.DD` 변환, 비율 합치기
 - `src/hooks/timerClock.js`: 서버 `timerEndsAt` 해석(시간대 없으면 KST 가정)과 남은 초 계산, 시간대 오류 안전장치
+- `src/hooks/chartPath.js`: 대시보드 선 그래프 색 상수(`CHART_COLORS`), 곡선 path 계산, 증감 문구
 - `src/hooks/useServerRecords.js`: 홈·기록·대시보드·마이페이지·완료 화면 진입 시 records·saved·비율을 서버 값으로 채우고, 완료 화면에서 상세 본문을 채움
 
 ## 나중에 바꿀 것
@@ -304,8 +331,8 @@
 17. **서버 문자열의 줄바꿈이 `<p>` 안에서 한 줄로 표시됨** (종합 리포트 위치에서는 **해결**: 줄바꿈 기준으로 `<p>`를 나눔. 강점·보완점·질문·RewritePage 사이드바는 그대로): 강점·보완점·질문에 줄바꿈이 있어도 `<p>`가 줄바꿈을 그대로 보여주지 않음. 줄바꿈을 살리려면 스타일(예: `whitespace-pre-line`) 변경이 필요해 디자인 변경에 해당
 18. **RewritePage 질문 `key={q}` 중복 경고**: 서버가 같은 질문 문장을 2개 주면 React가 콘솔에 key 중복 경고를 냄 (화면 표시는 정상). key를 바꾸려면 기존 코드 수정이 필요해 그대로 둠
 19. **완료 훈련이 적으면 mostImproved/focusArea가 null이라 mock이 보임**: 완료한 훈련이 없거나 적어 서버가 `null`을 주면 대시보드에 mock `논지` / `근거 구성`이 표시됨 (사용자 결정 (a): 문구 추가 없이 mock으로 대체). 빈 상태 문구를 넣으려면 문구 승인 필요
-20. **AI 의존도 미표시**: 대시보드 `trend[].aiDependencyRatio`를 그래프에 표시하지 않음. 넣으려면 그래프 2시리즈(칸마다 막대 2개)와 범례가 필요하고, 화면 약 15~25줄·새 태그 6~7개·새 색상 1~2개 규모 (데이터 쪽은 `applyRatios`에 약 3줄)
-21. **demo-chart/chart-bar 스타일이 src에 없어 막대가 안 보일 가능성** (원래부터 있던 문제, 팀원 확인 필요): GrowthDashboardPage 그래프의 `demo-chart`·`chart-bar` 클래스 정의가 `index.css` 등 src 어디에도 없음. 바깥 div에 `display:flex`가 없어 `align-items`·`flex:1`이 적용되지 않고, 막대에 배경색이 없음. 서버 데이터 연결과 무관하게 막대그래프로 보이지 않을 수 있음
+20. ~~AI 의존도 미표시~~ → **해결**: 선 그래프 2시리즈(자기 사고 구성·AI 의존도)와 범례, 증감 카드로 표시 (25번)
+21. ~~demo-chart/chart-bar 스타일이 src에 없어 막대가 안 보일 가능성~~ → **해결**: 막대 그래프를 시안의 SVG 선 그래프로 교체해 해당 클래스가 사라짐 (25번)
 22. **timerEndsAt은 UTC로 해석 (시간대 표시 없음)**: 서버가 UTC 시각을 시간대 표시 없이 전달함. 확인된 실제 응답(`POST /trainings`, 한국 시각 00:09경 생성): `startedAt "2026-11-11T15:09:20.907969353"`, `timerEndsAt "2026-11-11T15:39:20.907969353"`. 그래서 `src/hooks/timerClock.js`는 시간대 표시가 없으면 `Z`를 붙여 해석함(표시가 있으면 그대로). **서버가 UTC 표기를 유지한다는 전제이며, 서버 시간대 설정이 바뀌면 재확인 필요.** 백엔드에 시간대 포함(ISO 8601 offset) 요청 권장
 23. **타이머 안전장치와 한계**: 계산한 남은 시간이 `timerMinutes × 60 + 60`초보다 크면 시간대 오류로 보고 기존 방식(`분 × 60`, 1초씩 감소)으로 대체. 반대 방향 오류(종료 시각이 실제보다 이르게 해석되어 바로 0이 되는 경우)는 정상 종료와 구분할 수 없어 막지 못함. 처음 KST로 가정했을 때 타이머가 0초로 표시된 증상이 바로 이 경우였고, UTC 해석으로 바꿔 해결함(22번)
 24. **배포 시 `Access-Control-Expose-Headers: Date` 필요**: 시계 차이 보정은 응답 `Date` 헤더를 읽을 수 있을 때만 동작. 개발 환경은 Vite 프록시로 같은 출처라 읽히지만, 배포(다른 출처)에서는 백엔드가 이 헤더를 노출해야 함. 못 읽으면 보정 없이 브라우저 시계 사용

@@ -67,6 +67,21 @@ export function useServerRecords({
           setServerGrowth({
             strongest: dashboard.mostImproved?.label || null,
             focus: dashboard.focusArea?.label || null,
+            // 선 그래프용 추이(오래된 순, 두 비율이 모두 숫자인 항목만)
+            trend: (dashboard.trend ?? [])
+              .filter(
+                (t) =>
+                  typeof t?.selfThoughtRatio === 'number' &&
+                  typeof t?.aiDependencyRatio === 'number',
+              )
+              .map((t) => ({
+                trainingId: t.trainingId,
+                self: t.selfThoughtRatio,
+                ai: t.aiDependencyRatio,
+              })),
+            // 증감 카드용 (최근 - 첫, %p). 완료 훈련이 부족하면 null
+            aiChange: dashboard.aiDependencyChange ?? null,
+            selfChange: dashboard.selfThoughtChange ?? null,
           });
         if (dashboard) setServerStreakDays(dashboard.streakDays ?? 0);
       })

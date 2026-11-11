@@ -294,6 +294,26 @@
 - **유지한 것**: 위 카드 3개(27줄 note 글자 외), 성장/집중 항목, 최근 완료한 훈련 카드 (줄 단위로 동일 확인). TrainingContext 무수정. 새 라이브러리 없음(SVG)
 - **되돌리는 법**: `git checkout dev -- src/pages/GrowthDashboardPage.jsx src/hooks/useServerRecords.js` 후 `src/hooks/chartPath.js` 삭제
 
+### 26. 진행 중 글 여러 건 표시 — 서버가 진행 중 훈련을 여러 건 주지만 화면이 1건만 표시해 목록 UI로 변경
+- **파일**: `src/api/recordView.js`, `src/hooks/useServerRecords.js`, `src/hooks/useWriting.js`, `src/context/TrainingContext.jsx`, `src/pages/HomePage.jsx`, `src/pages/HistoryPage.jsx`
+- **바꾼 이유**: `GET /api/v1/trainings?status=IN_PROGRESS`는 진행 중 훈련을 모두 주는데, 홈 "작성 중인 글" 카드와 기록 화면의 진행 중 자리가 `saved` 1건만 표시했음(12번)
+- **데이터 구조**: `saved`(가장 최근 1건)는 이어서 작성·임시저장·완료·탈퇴·삭제 로직이 쓰고 있어 그대로 두고, 진행 중 전체 목록 `inProgressList`를 별도로 추가
+- **바꾼 곳**
+  - `recordView.js`: 상태 라벨(`DRAFTING` 작성 중 / `ANALYZING` 분석 중 / `COMPARED` 분석 완료 / `REWRITING` 다시 쓰기 중)과 `toInProgress(item)`(`status`에 라벨, `inProgress: true`). `toSaved` 주석을 현재 역할에 맞게 수정
+  - `useServerRecords.js`: `inProgressList` 상태(진행 중 응답 전체), `removeInProgress(id)`, 반환 값에 두 개 추가. `saved` 설정 줄의 주석을 현재 역할에 맞게 수정
+  - `useWriting.js`: `resume`의 서버 경로를 `resumeTraining(item)`으로 분리해 반환 키에 추가 (기존 `resume()`은 이를 호출해 동작 동일)
+  - `TrainingContext.jsx`: `inProgressList`·`removeInProgress` 받기, `requestDelete`에 진행 중 항목 판정 추가. **모달 제목 조건 1줄 변경**(진행 중 항목도 "작성 중인 글을 삭제할까요?", 사용자 결정 (b)). 삭제 확인 시 목록에서 바로 빼고, 현재 작업 중인 훈련이면 sessionStorage에서도 삭제. Provider value에 `inProgressList` 추가
+  - `HomePage.jsx`: 20줄 받아오는 값(`saved`·`resume` → `inProgressList`·`resumeTraining`), 86-94줄 카드를 목록으로 교체 (최대 3건)
+  - `HistoryPage.jsx`: 11줄 받아오는 값, 23·29줄 `saved` 진행 중 슬롯 → `...inProgressList`, 41·49줄 `r.id === 'draft'` → `r.inProgress`, `resume()` → `resumeTraining(r)`
+- **추가한 UI** (HomePage만, 기록 화면은 기존 목록 행을 그대로 재사용 — 태그·속성 동일 확인)
+  - 홈 목록 행 `<div key className="mt-3 flex flex-col gap-3 rounded-3.5 border border-[#E6E9E4] p-4.5 sm:flex-row sm:items-center sm:justify-between">` (기록 화면 목록 행과 같은 테두리·모서리·여백, 모바일 세로 / sm 이상 가로). 안의 정보와 버튼은 기존 `MutedText`·`Button variant="secondary"` 재사용
+  - "모두 보기" `<button type="button" className="mt-3 text-sm text-[#59654F] underline">`: 진행 중이 4건 이상일 때 "진행 중인 글 N개 모두 보기 →" → 기록 화면으로 이동
+- **문구 변경**: 홈 카드 `제목 · 임시 저장됨` → `제목 · 상태 라벨 · 날짜`. 기록 화면 배지 "진행 중" → 상태 라벨
+- **동작 변화**: 홈·기록 화면은 서버 진행 중 목록만 표시하므로, 서버에 없는 **로컬 전용 `saved`(예전 localStorage 임시 저장본)는 더 이상 표시되지 않음**. `saved` 자체는 남아 있어 관련 로직은 그대로
+- **많을 때**: 홈은 최대 3건 + 모두 보기, 기록 화면은 전부 표시. 진행 중 0건이면 홈 카드 숨김(기존과 같음)
+- **유지한 것**: `saved`와 그것을 쓰는 로직, 기존 `resume()` 동작, 기록 화면 목록 행 디자인과 "⋯ 기록 삭제" 메뉴, 완료 기록 클릭 동작
+- **되돌리는 법**: `git checkout dev -- src/pages/HomePage.jsx src/pages/HistoryPage.jsx src/context/TrainingContext.jsx src/hooks/useWriting.js src/hooks/useServerRecords.js src/api/recordView.js` (각 파일의 이전 변경까지 함께 되돌아감)
+
 ## 신규 파일 목록과 역할
 - `src/api/client.js`: 공통 fetch 래퍼. access token을 메모리에 보관하고, 401이 오면 1회 재발급 후 재시도. `ApiError` 정의
 - `src/api/auth.js`: 회원가입, 로그인, 재발급, 로그아웃, 아이디 중복 확인 API
@@ -323,7 +343,7 @@
 9. ~~대시보드 세 번째 카드(streakDays) mock 유지~~ → **해결**: 라벨을 "연속 완료 일수"로 바꾸고 서버 `streakDays` 표시, 없으면 0 (17번)
 10. ~~대시보드 가장 성장한 항목 / 집중 개선 항목 mock 유지~~ → **해결**: `mostImproved.label` / `focusArea.label`로 연결 (14~16번). `aiDependencyRatio`(AI 의존도)는 여전히 표시할 자리가 없음
 11. ~~회원탈퇴 모달 문구 불일치~~ → **해결**: "작성한 훈련 기록은 삭제되지 않고 보존됩니다"로 변경 (18번)
-12. **진행 중 글은 가장 최근 1건만 표시**: 홈 카드와 기록 화면의 진행 중 자리가 1개(`saved`)라, 서버에 진행 중 훈련이 여러 개 있어도 1건만 보임. 여러 건을 보이려면 화면 수정 필요
+12. ~~진행 중 글은 가장 최근 1건만 표시~~ → **해결**: 홈은 최대 3건 + 모두 보기, 기록 화면은 전부 표시 (26번)
 13. **ANALYZING 상태의 재검사 항목을 이어서 열면 초안 화면으로 감**: `RESUME_PATH`가 ANALYZING을 `/writing`으로 보내서, 재검사 분석 중이던 항목이면 초안 작성 화면에 수정본 내용이 보임. 제출 버튼을 누르면 분석 결과 확인을 이어가고 끝나면 `/analysis`로 이동하므로 흐름은 이어지지만 화면 문맥이 맞지 않음. 서버에서 재검사 여부(seqNo)를 알 수 있으면 `/rewrite`로 보내도록 개선
 14. **로그아웃 후 records가 메모리에 남음**: 로그아웃해도 `records`·`selected`를 비우지 않음. 보호된 화면이라 노출되지는 않고 다시 로그인하면 서버 값으로 교체됨. 비우려면 `useAuth`의 logout 또는 `useServerRecords`에서 `user`가 없을 때 초기화 필요
 15. ~~서버 질문이 1개일 때 예시 문구가 섞임~~ → **해결**: map으로 바꿔 서버 질문 수만큼만 표시 (19번)
@@ -349,6 +369,17 @@
 - ~~아이디 중복 확인 UI 없음~~ → **해결**: 회원가입 아이디 입력칸 onBlur로 확인 (20번)
 - **배포 시 백엔드 CORS 설정 필요, 프록시는 개발 전용**: `vite.config.js`의 `server.proxy`는 dev 서버에서만 동작함. 배포 사이트에서는 백엔드가 프론트 도메인을 허용하고 `Access-Control-Allow-Credentials: true`를 설정해야 하며, refresh 쿠키는 `SameSite=None; Secure`여야 함. 백엔드 CORS 설정이 끝나면 프록시를 제거하고 `.env.local`에 다시 `https://mind-test.store`를 넣어도 됨
 - ~~완료 후 기록은 아직 로컬~~ → **해결**: `complete`가 로컬 기록에 추가한 항목은 완료 화면 진입 시 서버 목록·상세로 교체됨
+
+## 연결하지 않은 API
+명세에는 있지만 이번 연동에서 의도적으로 연결하지 않은 API와 그 이유
+
+1. **GET /api/v1/users/me** (내 정보, 명세 1-6)
+   - 이유: 마이페이지의 아이디와 완료 편수는 로그인 응답의 `loginId`와 완료 목록 개수(`records.length`)로 같은 값을 이미 보여주고 있어 별도 호출이 필요하지 않음. 가입일(`createdAt`)은 화면에 표시할 자리가 없음
+   - 연결하려면: MyPage의 값 출처만 `/users/me` 응답으로 교체 (새 UI 불필요. 가입일을 표시하려면 새 UI 필요)
+   - 참고: `src/api/home.js`의 `getMe` 함수는 이미 만들어져 있음
+2. **GET /api/v1/trainings/{id}/analyses** (회차별 분석 목록, 명세 4-3)
+   - 이유: 재검사 회차별 분석 이력(초안 분석, 1회차, 2회차…)을 보여줄 화면이 없음. 비교 분석 화면은 최신 분석 1개만 표시하는 구조라 새 UI(회차 탭이나 분석 이력 목록)가 필요함. 처음 Swagger 분석 매핑표에도 포함되지 않았음
+   - 연결하려면: 비교 분석 또는 완료 화면에 회차 선택 UI를 추가하고, 선택한 `analysisId`로 `GET /api/v1/analyses/{id}`를 호출
 
 ## 나중에 확인할 것
 - ~~[버그] 초안 제출 후 뒤로가기하면 다시 제출되지 않음~~ → **해결 (23번)**. "무반응"의 정확한 원인은 확인되지 않았고, 서버 상태 확인 후 이동하는 방식으로 처리함

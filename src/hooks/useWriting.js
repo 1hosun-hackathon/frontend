@@ -160,13 +160,18 @@ export function useWriting({
     }
     saveLocal();
   };
+  // 서버 목록에서 온 진행 중 항목(본문 없음) 이어서 열기: session을 비우고,
+  // 상태에 맞는 화면으로 이동하면 그 화면의 복구 effect가 서버에서 불러옴
+  const resumeTraining = (item) => {
+    if (!item?.trainingId) return;
+    setTrainingId(item.trainingId);
+    setSession(blank());
+    navigate(RESUME_PATH[item.trainingStatus] ?? '/writing');
+  };
   const resume = () => {
     if (!saved) return;
-    // 서버 목록에서 온 진행 중 항목(본문 없음): session을 비우고, 이동한 화면의 복구 effect가 서버에서 불러오게 함
     if (saved.trainingId && saved.trainingStatus) {
-      setTrainingId(saved.trainingId);
-      setSession(blank());
-      navigate(RESUME_PATH[saved.trainingStatus] ?? '/writing');
+      resumeTraining(saved);
       return;
     }
     if (saved.trainingId) setTrainingId(saved.trainingId);
@@ -449,6 +454,7 @@ export function useWriting({
     startNewWriting,
     saveDraft,
     resume,
+    resumeTraining,
     begin,
     submit,
     recheck,

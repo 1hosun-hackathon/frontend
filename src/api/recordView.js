@@ -22,8 +22,24 @@ export const toRecord = (item) => ({
   trainingStatus: item.status,
 });
 
-// 진행 중 목록 항목 → saved (홈 "작성 중인 글" 카드, 기록 화면의 진행 중 1건)
+// 진행 중 목록 항목 → saved (가장 최근 1건, 이어서 작성 로직용. 화면 목록은 toInProgress)
 export const toSaved = (item) => ({ ...toRecord(item), status: '진행 중' });
+
+// 진행 중 훈련 상태 → 화면 라벨
+const IN_PROGRESS_LABEL = {
+  DRAFTING: '작성 중',
+  ANALYZING: '분석 중',
+  COMPARED: '분석 완료',
+  REWRITING: '다시 쓰기 중',
+};
+
+// 진행 중 목록 항목 → 홈 "작성 중인 글" 목록, 기록 화면 진행 중 행
+// (status에 상태 라벨, inProgress로 완료 기록과 구분)
+export const toInProgress = (item) => ({
+  ...toRecord(item),
+  status: IN_PROGRESS_LABEL[item.status] ?? '진행 중',
+  inProgress: true,
+});
 
 // 상세 응답 → records 항목에 합칠 값
 export const toRecordDetail = (d) => ({

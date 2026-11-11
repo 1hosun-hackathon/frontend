@@ -5,6 +5,7 @@ import { getHome, getDashboard } from '../api/home';
 import {
   toRecord,
   toSaved,
+  toInProgress,
   toRecordDetail,
   applyRatios,
 } from '../api/recordView';
@@ -28,6 +29,13 @@ export function useServerRecords({
   const [serverGrowth, setServerGrowth] = useState(null);
   // 대시보드 연속 완료 일수 (streakDays)
   const [serverStreakDays, setServerStreakDays] = useState(null);
+  // 진행 중 훈련 전체 (최근 날짜순). saved에는 기존처럼 가장 최근 1건만 넣음
+  const [inProgressList, setInProgressList] = useState([]);
+  // 삭제 직후 목록에서 바로 빼기
+  const removeInProgress = (id) =>
+    setInProgressList((list) =>
+      list.filter((t) => String(t.id) !== String(id)),
+    );
   const [reloadKey, setReloadKey] = useState(0);
   const reload = () => setReloadKey((k) => k + 1);
 
@@ -56,8 +64,9 @@ export function useServerRecords({
             return p?.detailLoaded ? { ...p, ...r } : r;
           });
         });
-        // 진행 중은 가장 최근 1건만 (화면의 진행 중 자리가 1개)
+        // saved에는 가장 최근 1건(이어서 작성 로직용), inProgressList에는 전체(홈·기록 화면 목록)
         if (inProgress) setSaved(inProgress.length ? toSaved(inProgress[0]) : null);
+        if (inProgress) setInProgressList(inProgress.map(toInProgress));
         // 홈·대시보드 모두 "최근 완료 3회 평균". 완료 기록이 없으면 null → 0
         const ratio = home?.selfThoughtRatio ?? dashboard?.selfThoughtRatio;
         setServerRatio(
@@ -121,5 +130,12 @@ export function useServerRecords({
     };
   }, [user, pathname, selected?.id]);
 
-  return { serverRatio, serverGrowth, serverStreakDays, reload };
+  return {
+    serverRatio,
+    serverGrowth,
+    serverStreakDays,
+    inProgressList,
+    removeInProgress,
+    reload,
+  };
 }

@@ -17,7 +17,7 @@ export default function HomePage() {
       onConfirm: () => navigate('/login'),
     });
   const { user, navigate } = useAuthContext();
-  const { records, saved, startNewWriting, ratio, resume } =
+  const { records, startNewWriting, ratio, inProgressList, resumeTraining } =
     useTrainingContext();
   return (
     <>
@@ -83,13 +83,31 @@ export default function HomePage() {
           <small>직접 수정하고 재검사</small>
         </div>
       </div>
-      {user && saved && (
+      {user && inProgressList.length > 0 && (
         <Card>
           <h2>작성 중인 글이 있어요</h2>
-          <MutedText>{saved.topic || '제목 없는 글'} · 임시 저장됨</MutedText>
-          <Button variant="secondary" onClick={resume}>
-            이어서 작성하기
-          </Button>
+          {inProgressList.slice(0, 3).map((t) => (
+            <div
+              key={t.id}
+              className="mt-3 flex flex-col gap-3 rounded-3.5 border border-[#E6E9E4] p-4.5 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <MutedText>
+                {t.topic || '제목 없는 글'} · {t.status} · {t.date}
+              </MutedText>
+              <Button variant="secondary" onClick={() => resumeTraining(t)}>
+                이어서 작성하기
+              </Button>
+            </div>
+          ))}
+          {inProgressList.length > 3 && (
+            <button
+              type="button"
+              className="mt-3 text-sm text-[#59654F] underline"
+              onClick={() => navigate('/history')}
+            >
+              진행 중인 글 {inProgressList.length}개 모두 보기 →
+            </button>
+          )}
         </Card>
       )}
     </>

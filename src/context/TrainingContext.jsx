@@ -27,7 +27,14 @@ export function TrainingProvider({ children }) {
   const { setRecords, setSaved, saved, setSelected, setMenu, setDeleting } =
     recordsState;
   // 서버 기록으로 records · saved · selected 채우기 (홈·기록·대시보드·마이페이지·완료 화면)
-  const { serverRatio, serverGrowth, serverStreakDays, reload: reloadRecords } = useServerRecords({
+  const {
+    serverRatio,
+    serverGrowth,
+    serverStreakDays,
+    inProgressList,
+    removeInProgress,
+    reload: reloadRecords,
+  } = useServerRecords({
     user,
     pathname,
     records: recordsState.records,
@@ -161,9 +168,13 @@ export function TrainingProvider({ children }) {
   }, [pathname, writing.session.trainingId, writing.session.status]);
   const requestDelete = (id) => {
     setMenu(null);
+    // 진행 중 목록의 항목인지 (모달 제목, 목록에서 바로 빼기)
+    const isInProgress = inProgressList.some(
+      (t) => String(t.id) === String(id),
+    );
     openModal({
       title:
-        id === 'draft'
+        id === 'draft' || isInProgress
           ? '작성 중인 글을 삭제할까요?'
           : '훈련 기록을 삭제할까요?',
       message:
@@ -175,6 +186,11 @@ export function TrainingProvider({ children }) {
         const targetId = id === 'draft' ? saved?.trainingId : id;
         if (id === 'draft' && targetId && targetId === getTrainingId())
           clearTrainingId();
+        // 진행 중 항목: 목록에서 바로 빼고, 현재 작업 중인 훈련이면 sessionStorage에서도 삭제
+        if (isInProgress) {
+          removeInProgress(id);
+          if (String(id) === String(getTrainingId())) clearTrainingId();
+        }
         if (targetId)
           deleteTraining(targetId).catch(() => {
             notify('기록을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.');
@@ -229,6 +245,8 @@ export function TrainingProvider({ children }) {
         serverGrowth,
         // 대시보드 연속 완료 일수, 불러오기 전에는 null
         serverStreakDays,
+        // 진행 중 훈련 목록 (홈·기록 화면)
+        inProgressList,
       }}
     >
       {children}

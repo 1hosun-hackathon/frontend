@@ -60,21 +60,101 @@
   - `src/api/client.js`는 이미 `VITE_API_BASE_URL ?? ''`를 쓰고 있어 수정하지 않음
 - **되돌리는 법**: `git checkout dev -- vite.config.js` (그다음 `.env.local`을 `VITE_API_BASE_URL=https://mind-test.store`로 되돌릴 것)
 
+### 6. src/hooks/useWriting.js (비교 분석 → 다시 쓰기 → 재검사 → 완료)
+- **왜 바꿔야 했는지**
+  - `recheck`: 로컬 배열에 추가만 하던 가짜 처리를 `POST /revisions` + 상태 확인 + 결과 조회로 교체 (서버에 재검사가 기록되려면 필요)
+  - `complete`: 서버 `POST /complete`가 성공한 뒤 기존 로컬 처리를 그대로 실행 (서버에서 COMPLETED가 되어야 기록·홈·대시보드에 반영됨)
+  - `saveDraft`: 임시저장 조건을 서버 status 기준으로 변경 (REWRITING에서도 서버 저장 필요)
+  - `waitForAnalysis`: 재검사 결과도 받도록 보강하고 `session.analysis`에 저장 (나중에 화면 연결용)
+- **바꾼 곳**
+  - import: `submitRevision`, `completeTraining`, `toAnalysisView` 추가
+  - 파일 상단: `revisionErrorText`(409 포괄 문구, 400), `completeErrorText`(409, 400) 추가
+  - `saveDraft`: 조건을 `!session.analysisId`에서 `session.status` 기준으로 변경 (DRAFTING → 초안, REWRITING → 수정본, 그 외 → 로컬만)
+  - `begin`: `update('status', 'DRAFTING')` 1줄 추가
+  - `waitForAnalysis`: 시작 시 `status: 'ANALYZING'`. 성공 시 `analysis`(`toAnalysisView` 결과)와 `status: 'COMPARED'` 저장. 재검사(seqNo ≥ 1)면 `final`·`recheckCount`·`versions` 갱신. 이동 조건을 `/writing`·`/rewrite`로 확장. 지연 안내 문구를 "같은 버튼"으로 일반화
+  - `runAnalysisTask`: `fallback`으로 문구 대신 함수(err → 문구)도 받을 수 있게 함
+  - `recheck`: 본문 교체 (`POST /revisions` → `waitForAnalysis`. 분석 중이면 상태 확인만 이어서 함)
+  - `complete`: `POST /complete` 성공 후 기존 로컬 처리 실행 + `clearTrainingId()`. id는 trainingId 사용. 중복 클릭 방지
+- **유지한 것**: 함수 이름, 인자, 반환 키 13개, 반환값(undefined). 화면 파일·`models/training.js`·`AppRoutes.jsx`는 수정하지 않음. 비교 분석 화면의 리포트·강점·보완점·질문·Criteria는 mock 그대로 표시 (A0)
+- **되돌리는 법**: `git checkout dev -- src/hooks/useWriting.js` (2번 변경까지 함께 되돌아감)
+
+### 7. src/context/TrainingContext.jsx (추가만, 기존 줄 변경 없음)
+- **왜 바꿔야 했는지**
+  - `/rewrite` 진입 시 `POST /rewrite` 호출 effect: "다시 쓰기" 버튼 핸들러가 화면 파일(ComparisonPage) 안에 있어서, 화면을 수정하지 않으려고 여기서 호출
+  - `/analysis`·`/rewrite` 새로고침 복구 effect: 새로고침하면 session이 사라져 화면이 비는 문제 방지
+  - `status` 1줄: 새로고침 후에도 임시저장이 서버 상태를 알아야 함
+- **바꾼 곳**
+  - import 3줄 추가 (`startRewrite`, `getAnalysis`, `toAnalysisView`. 기존 import 줄을 고치지 않으려고 별도 줄로 추가)
+  - 기존 `/writing` 복구 effect의 객체 안에 `status: w.status,` 1줄 삽입
+  - 새 `useEffect` ①: `/analysis`·`/rewrite`에서 `session.trainingId`가 없고 sessionStorage에 id가 있으면 `GET /trainings/{id}` + `GET /analyses/{latestAnalysisId}`로 draft·final·ai·recheckCount·analysis·status 복구 (ANALYZING이면 결과 조회는 생략하고 `pendingAnalysisId`만 설정)
+  - 새 `useEffect` ②: `/rewrite`에서 `status === 'COMPARED'`면 `POST /rewrite`를 호출해 REWRITING으로 전환 (여러 번 호출해도 결과 같음). 실패 시 notify
+- **유지한 것**: Provider value 키 전부, 기존 줄 전부(삭제·변경 없음). 화면 파일은 수정하지 않음
+- **되돌리는 법**: `git checkout dev -- src/context/TrainingContext.jsx` (3번 변경까지 함께 되돌아감)
+
+### 8. src/hooks/useRecords.js (기록·완료·홈·대시보드·마이페이지)
+- **불가피한 이유**: 화면들이 `records`를 읽는데 초기값이 mock(`sampleRecords`) 또는 localStorage 캐시라서, 서버 데이터가 오기 전에 가짜 기록이나 이전 계정의 기록이 보이고, API가 실패하면 가짜 기록이 그대로 남음
+- **바꾼 곳**: 5줄 `useState(() => get(STORAGE, sampleRecords))` → `useState([])` (주석 1줄 포함)
+- **유지한 것**: 반환 키 전부(`records`·`setRecords`·`saved`·…·`ratio`), import와 localStorage 저장 effect(지우지 않음. `sampleRecords` import는 쓰이지 않는 채로 남음). 화면 파일은 수정하지 않음
+- **되돌리는 법**: `git checkout dev -- src/hooks/useRecords.js`
+
+### 9. src/hooks/useWriting.js (resume: 서버 진행 중 항목 이어서 열기)
+- **불가피한 이유**: 홈·기록 화면의 "작성 중인 글"이 서버 목록 항목(본문 없음)으로 바뀌어, 기존처럼 `setSession(saved)`로 열면 빈 화면이 됨. 이어서 열기 버튼 핸들러는 화면 파일에 있어서 `resume` 안에서 처리해야 함
+- **바꾼 곳**: 파일 상단 `RESUME_PATH`(상태별 이동 화면) 추가. `resume` 앞부분에 분기 7줄 추가: `saved.trainingStatus`가 있으면 trainingId 저장 → `setSession(blank())` → DRAFTING·ANALYZING은 `/writing`, COMPARED는 `/analysis`, REWRITING은 `/rewrite`로 이동 (내용은 기존 새로고침 복구 effect가 서버에서 불러옴)
+- **유지한 것**: 기존 `resume` 줄 전부(로컬 저장본 경로), 함수 이름·인자·반환 키. 화면 파일은 수정하지 않음
+- **되돌리는 법**: `git checkout dev -- src/hooks/useWriting.js` (2·6번 변경까지 함께 되돌아감)
+
+### 10. src/context/TrainingContext.jsx (기록·삭제·탈퇴·비율)
+- **불가피한 이유**
+  - 화면이 읽는 `records`·`saved`·`selected`·`ratio`가 모두 이 Provider에서 나오므로, 서버 데이터를 채울 곳이 여기뿐임
+  - 기록 삭제·회원탈퇴 버튼 핸들러가 화면 파일에 있고, 실제 처리(`requestDelete`·`withdraw`)가 여기 있음
+- **바꾼 곳**
+  - import 4줄(`useServerRecords`, `deleteTraining`, `withdraw as withdrawAccount`, `clearTrainingId`), `const { user } = useAuthContext();` 1줄 추가
+  - `useServerRecords({...})` 호출 추가 → `serverRatio`, `reloadRecords`
+  - `requestDelete`의 `onConfirm`: 기존 2줄 **앞에** 서버 삭제(`DELETE /trainings/{id}`, 진행 중 항목은 `saved.trainingId`) 삽입. 실패하면 notify 후 목록 다시 불러오기. 지우는 진행 중 글이 현재 trainingId면 sessionStorage에서도 삭제
+  - `withdraw`의 `onConfirm`: 기존 3줄(`setRecords([])`, `setSaved(null)`, `logout()`)을 `DELETE /users/me` 성공 뒤(`.then`)로 이동 (사용자 결정 (b)). 실패하면 notify, 로그인 상태 유지
+  - Provider value 끝에 `ratio: serverRatio ?? recordsState.ratio` 1줄 추가 (키 이름 같음, 불러오기 전에는 기존 계산값)
+- **유지한 것**: value 키 전부, 모달 제목·문구(탈퇴 문구 포함), `remove` 함수(화면에서 쓰지 않아 수정하지 않음), 이전 단계의 effect. 화면 파일은 수정하지 않음
+- **되돌리는 법**: `git checkout dev -- src/context/TrainingContext.jsx` (3·7번 변경까지 함께 되돌아감)
+
 ## 신규 파일 목록과 역할
 - `src/api/client.js`: 공통 fetch 래퍼. access token을 메모리에 보관하고, 401이 오면 1회 재발급 후 재시도. `ApiError` 정의
 - `src/api/auth.js`: 회원가입, 로그인, 재발급, 로그아웃, 아이디 중복 확인 API
 - `.env.local`: `VITE_API_BASE_URL=https://mind-test.store` (`.git/info/exclude`로 git 제외)
 - `src/api/trainings.js`: 훈련 생성(multipart, 첨부파일 제외), 작업 정보 조회, 임시저장, 초안 제출 API. writingType을 서버 값으로 바꾸는 함수가 여기 한 곳에 있음
 - `src/api/analyses.js`: 분석 상태, 분석 결과, 재시도 API와 `pollAnalysis`(2초 간격, 3분 제한)
+- `src/api/analysisView.js`: 분석 응답을 화면용 형태로 변환 (문단 나누기, items → Criteria 형태, 질문 정렬)
+- `src/api/trainings.js` (추가분): 다시 쓰기 시작 `startRewrite`, 재검사 `submitRevision`, 완료 `completeTraining`
 - `src/hooks/trainingSession.js`: 진행 중인 trainingId를 sessionStorage에 저장·조회·삭제
 - `.env.production`: 배포 빌드용 `VITE_API_BASE_URL=https://mind-test.store` (커밋 대상)
+- `src/api/records.js`: 기록 목록(전체 페이지 조회, size 50 → 400이면 10으로 재시도), 상세, 삭제 API
+- `src/api/home.js`: 홈, 대시보드, 내 정보(현재 미사용), 회원탈퇴 API
+- `src/api/recordView.js`: 목록·상세 응답을 화면의 records 모양으로 변환, 날짜 `YYYY.MM.DD` 변환, 비율 합치기
+- `src/hooks/useServerRecords.js`: 홈·기록·대시보드·마이페이지·완료 화면 진입 시 records·saved·비율을 서버 값으로 채우고, 완료 화면에서 상세 본문을 채움
 
 ## 나중에 바꿀 것
-- **에러 메시지 형식**: `ApiError`가 서버 응답의 `body.message`를 가정함. 명세에 에러 응답 형식이 없어 보류 중이며, 확정되면 `src/api/client.js`의 `ApiError`를 수정
-- **writingType 논설문 고정 전송 (A안)**: 서버 enum이 `논설문`만 허용해서 `src/api/trainings.js`의 `toServerWritingType`이 항상 `'논설문'`을 반환함. 백엔드가 enum을 늘리면 `(genre) => genre;`로 한 줄 교체 (B안). 화면 선택지 6개와 `models/training.js`의 기본값은 그대로 둠
-- **새로고침 시 글 종류가 "논설문"으로 표시됨**: TrainingContext의 복구 `useEffect`가 `genre`를 서버의 `writingType`으로 채우는데, 위 고정 때문에 항상 논설문. writingType을 B안으로 바꾸면 함께 해결됨
-- **첨부파일 업로드 제외**: `createTraining`이 `files` 부분을 보내지 않음. SetupPage는 파일 이름만 보관 중이라, 업로드하려면 `File` 객체 보관이 필요 (화면 파일 수정 승인 필요)
+1. **비교 분석 화면은 mock 표시 중 (A0)**: 리포트·강점·보완점·질문·Criteria 항목은 지금 mock을 보여줌. 서버 데이터는 이미 `session.analysis`(`toAnalysisView` 결과: `report`·`summary`·`strengths`·`improvements`·`criteria`·`questions`)에 저장되고 있어서, 화면 파일 수정이 허용되면 `{}` 안의 데이터 출처만 바꾸면 연결됨 (ComparisonPage 47·56·60·71-72줄, RewritePage 55·58·60·67줄, Criteria.jsx 데이터 출처). 이번에 실제 값으로 표시되는 것은 내 글·AI 글·초안/수정본 비교뿐
+2. **등급(보통→우수)은 API에 없음**: Criteria와 완료 화면 점수 칸의 `before`/`after`. `toCriteria`는 빈 값으로 둠. 백엔드가 등급·점수를 응답에 추가하면 연결
+3. **완료 화면 성장 리포트·점수 칸·잘한 점/보완할 점은 API 없음 (mock 유지)**: 완료 화면의 Criteria(`completion` 모드)도 mock. 완료 화면에서 실제 값은 주제·최초 초안·최종 글·수정 과정
+4. **ComparisonPage 질문 `<p>` 2개 고정**: `{}` 안의 값만 바꾸는 방식으로는 질문을 2개까지만 표시할 수 있음. 서버가 3개 이상 주면 `map`으로 바꾸는 것을 팀원과 상의 (RewritePage는 `map`이라 전부 표시 가능)
+5. ~~새로고침하면 versions(수정 과정)가 사라짐~~ → **해결**: 완료 화면에서 `GET /trainings/{id}/detail`의 `revisions`로 채움 (`useServerRecords`)
+6. **제출 후 뒤로가기하면 다시 제출되지 않는 버그**: 서버 상태가 COMPARED라 `POST /draft`가 409로 거절되는 것으로 추정. 재현 방법은 아래 "나중에 확인할 것" 참고. (재검사 후 뒤로가기는 `/rewrite` 진입 effect가 REWRITING으로 되돌려 줘서 문제없음)
+7. **409 포괄 문구**: 재검사 409를 "변경 없음"과 "상태 불일치"를 포괄하는 문구로 안내 중. 에러 JSON 형태가 확인되면 `NO_CHANGES` / `TRAINING_INVALID_STATUS`를 구분해 `revisionErrorText`·`completeErrorText`를 수정. `ApiError`가 `body.message`를 가정하는 부분(`src/api/client.js`)도 함께 확인
+8. **writingType 논설문 고정**: `src/api/trainings.js`의 `toServerWritingType`이 항상 `'논설문'`을 반환. 백엔드가 enum을 늘리면 `(genre) => genre;`로 한 줄 교체. 새로고침하면 글 종류가 "논설문"으로 보이는 문제도 함께 해결됨. 화면 선택지 6개와 `models/training.js`의 기본값은 그대로 둠
+9. **대시보드 세 번째 카드(streakDays) mock 유지**: 화면이 "훈련 기록 날짜 N일"을 `records` 날짜 수로 직접 계산함. API의 `streakDays`(연속 완료 일수)는 의미가 달라 화면 수정이 필요 (보류 항목)
+10. **대시보드 가장 성장한 항목 / 집중 개선 항목(mostImproved / focusArea) mock 유지**: 화면이 `demoAnalysis.growth`를 직접 import함. API 값은 `GET /dashboard`에 있으나 화면 수정 없이는 연결 불가. `aiDependencyRatio`도 표시할 자리가 없음
+11. **회원탈퇴 모달 문구 불일치**: 문구는 "훈련 기록이 삭제됩니다"인데 명세는 "훈련 기록은 보존된다". 문구 수정 금지 결정으로 그대로 둠 (TrainingContext의 `withdraw` 모달 message)
+12. **진행 중 글은 가장 최근 1건만 표시**: 홈 카드와 기록 화면의 진행 중 자리가 1개(`saved`)라, 서버에 진행 중 훈련이 여러 개 있어도 1건만 보임. 여러 건을 보이려면 화면 수정 필요
+13. **ANALYZING 상태의 재검사 항목을 이어서 열면 초안 화면으로 감**: `RESUME_PATH`가 ANALYZING을 `/writing`으로 보내서, 재검사 분석 중이던 항목이면 초안 작성 화면에 수정본 내용이 보임. 제출 버튼을 누르면 분석 결과 확인을 이어가고 끝나면 `/analysis`로 이동하므로 흐름은 이어지지만 화면 문맥이 맞지 않음. 서버에서 재검사 여부(seqNo)를 알 수 있으면 `/rewrite`로 보내도록 개선
+14. **로그아웃 후 records가 메모리에 남음**: 로그아웃해도 `records`·`selected`를 비우지 않음. 보호된 화면이라 노출되지는 않고 다시 로그인하면 서버 값으로 교체됨. 비우려면 `useAuth`의 logout 또는 `useServerRecords`에서 `user`가 없을 때 초기화 필요
+
+그 밖의 임시 처리
+- **첨부파일 업로드 제외**: `createTraining`이 `files` 부분을 보내지 않음. SetupPage는 파일 이름만 보관 중이라, 업로드하려면 `File` 객체 보관이 필요 (화면 파일 수정 필요)
 - **타이머는 클라이언트 기준**: 서버 `timerEndsAt`을 쓰지 않아 새로고침하면 처음부터 다시 셈
-- **비교 분석 `items`와 리포트는 mock 유지**: 이번에는 AI 글(`aiWriting.content`)만 실제 값. 나머지는 비교 분석 화면 단계에서 연결
 - **배포 시 백엔드 CORS 설정 필요, 프록시는 개발 전용**: `vite.config.js`의 `server.proxy`는 dev 서버에서만 동작함. 배포 사이트에서는 백엔드가 프론트 도메인을 허용하고 `Access-Control-Allow-Credentials: true`를 설정해야 하며, refresh 쿠키는 `SameSite=None; Secure`여야 함. 백엔드 CORS 설정이 끝나면 프록시를 제거하고 `.env.local`에 다시 `https://mind-test.store`를 넣어도 됨
-- **COMPARED/REWRITING 상태에서 새로고침한 경우 미처리**: 복구는 DRAFTING/ANALYZING만 처리함. 다음 단계(비교 분석/다시 쓰기)에서 처리
+- ~~완료 후 기록은 아직 로컬~~ → **해결**: `complete`가 로컬 기록에 추가한 항목은 완료 화면 진입 시 서버 목록·상세로 교체됨
+
+## 나중에 확인할 것
+- **[버그] 초안 제출 후 뒤로가기하면 다시 제출되지 않음**
+  - 재현 방법: ① 새 글 작성 → 초안 작성 → "초안 제출 · 비교 분석" ② 분석이 끝나 `/analysis`로 이동 ③ 브라우저 뒤로가기로 `/writing`에 돌아감 ④ 초안을 고치고 다시 "초안 제출"을 누름 → 제출되지 않음 (에러 모달 또는 반응 없음)
+  - 추정 원인 (확인 전): 제출 후 서버의 훈련 상태가 `COMPARED`로 바뀌는데, `POST /trainings/{id}/draft`는 `DRAFTING` 상태에서만 허용됨 → 409. 또 `session.analysisId`가 설정돼 있어 이 화면의 임시저장은 로컬에만 저장됨
+  - 처리 방향 (미정): 제출 후 `/writing`에 다시 들어오면 `/analysis`로 보내거나, 수정은 "다시 쓰기(재검사)" 흐름으로 안내

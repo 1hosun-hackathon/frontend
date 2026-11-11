@@ -41,3 +41,24 @@ export const submitDraft = (trainingId, content) =>
     method: 'POST',
     body: { content },
   });
+
+// POST /api/v1/trainings/{id}/rewrite → TrainingWorkspaceResponse
+// COMPARED → REWRITING. 이미 REWRITING이면 그대로 200 (여러 번 호출해도 결과 같음)
+export const startRewrite = (trainingId) =>
+  request(`/api/v1/trainings/${trainingId}/rewrite`, { method: 'POST' });
+
+// POST /api/v1/trainings/{id}/revisions → 202 { versionId, seqNo, analysisId, status }
+// REWRITING → ANALYZING. 직전 제출본과 같으면 409(NO_CHANGES), 빈 내용이면 400(EMPTY_CONTENT)
+export const submitRevision = (trainingId, content) =>
+  request(`/api/v1/trainings/${trainingId}/revisions`, {
+    method: 'POST',
+    body: { content },
+  });
+
+// POST /api/v1/trainings/{id}/complete → { trainingId, status, finalVersionId, completedAt }
+// REWRITING 상태에서만 가능
+export const completeTraining = (trainingId, content) =>
+  request(`/api/v1/trainings/${trainingId}/complete`, {
+    method: 'POST',
+    body: { content },
+  });

@@ -1,3 +1,5 @@
+export const MAX_WRITING_LENGTH = 3000;
+
 export const blank = () => ({
   topic: '',
   genre: '에세이',

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { blank } from '../models/training';
+import { blank, MAX_WRITING_LENGTH } from '../models/training';
 import { today } from '../lib/date';
 import {
   createTraining,
@@ -60,6 +60,11 @@ export function useWriting({
   const { files, fileObjectsRef, setFiles, addFiles, removeFile, clearFiles } =
     useAttachments(notify);
   const busy = useRef(false);
+  const validateLength = (content) => {
+    if (content.length <= MAX_WRITING_LENGTH) return true;
+    notify('글은 공백 포함 3,000자 이내로 작성해 주세요.');
+    return false;
+  };
   const update = (k, v) => setSession((s) => ({ ...s, [k]: v }));
   // COMPARED → REWRITING 전환 (POST /rewrite, 이미 REWRITING이면 그대로라 여러 번 호출해도 결과 같음).
   // 성공하면 true, 실패하면 안내 후 false
@@ -108,6 +113,7 @@ export function useWriting({
             ? session.final
             : null;
       if (session.trainingId && tempContent !== null) {
+        if (!validateLength(tempContent)) return;
         saveTemp(session.trainingId, tempContent)
           .then(saveLocal)
           .catch((err) =>
@@ -279,6 +285,7 @@ export function useWriting({
     return true;
   };
   const submit = () => {
+    if (!validateLength(session.draft)) return;
     if (!session.draft.trim()) {
       notify('초안을 작성해 주세요.');
       return;
@@ -321,6 +328,7 @@ export function useWriting({
     );
   };
   const recheck = () => {
+    if (!validateLength(session.final)) return;
     if (!session.final.trim()) {
       notify('수정본을 작성해 주세요.');
       return;
@@ -350,6 +358,7 @@ export function useWriting({
     });
   };
   const complete = () => {
+    if (!validateLength(session.final)) return;
     if (!session.final.trim()) {
       notify('최종 글을 작성해 주세요.');
       return;

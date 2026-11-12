@@ -31,7 +31,7 @@ export default function Header() {
         aria-label="글적글적 홈으로"
       >
         <img
-          className="h-auto w-28 object-contain sm:w-36"
+          className="h-auto w-[75px] object-contain sm:w-24"
           src="/logo.png"
           alt="글적글적"
         />

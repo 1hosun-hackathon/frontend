@@ -8,10 +8,21 @@ import { useTrainingContext } from '../context/TrainingContext';
 import { useAuthContext } from '../context/AuthContext';
 import React from 'react';
 import { demoAnalysis } from '../mocks/analysis';
+import {
+  CHART_COLORS,
+  smoothPath,
+  toY,
+  aiChangeLabel,
+  selfChangeLabel,
+} from '../hooks/chartPath';
 
 export default function GrowthDashboardPage() {
-  const { records, setSelected, ratio } = useTrainingContext();
+  const { records, setSelected, ratio, serverGrowth, serverStreakDays } = useTrainingContext();
   const { navigate } = useAuthContext();
+  // 선 그래프: 서버 trend(오래된 순) → 왼쪽(오래된 훈련)에서 오른쪽(최근 훈련)
+  const trend = serverGrowth?.trend ?? [];
+  const selfPath = smoothPath(trend.map((t) => t.self));
+  const aiPath = smoothPath(trend.map((t) => t.ai));
   return (
     <>
       <PageIntro>
@@ -24,44 +35,102 @@ export default function GrowthDashboardPage() {
         <StatCard
           label="자기 사고 구성 비율"
           value={`${ratio}%`}
-          note="훈련 기록 평균 · 시연용"
+          note="최근 훈련 기준"
         />
         <StatCard
-          label="훈련 기록 날짜"
-          value={`${new Set(records.map((r) => r.date)).size}일`}
+          label="연속 완료 일수"
+          value={`${serverStreakDays ?? 0}일`}
         />
       </div>
       <Card>
         <h2>AI 의존도 vs 자기 사고 구성</h2>
-        <MutedText>
-          기록별 자기 사고 구성 비율을 확인해 보세요. 현재 수치는 시연용
-          예시입니다.
-        </MutedText>
-        <div className="demo-chart [height:240px]  [align-items:end]  [border-bottom:1px_solid_#D8DDD5] [margin:35px_0_45px] ">
-          {records
-            .slice(0, 8)
-            .reverse()
-            .map((r) => (
-              <div
-                className="[&_small]:whitespace-nowrap [&_small]:text-xs [&_small]:text-[#7B8078] [height:100%] [flex:1]  [align-items:center] [justify-content:end]  "
-                key={r.id}
-              >
-                <div
-                  className="chart-bar  [width:75%] [max-width:65px] "
-                  style={{ height: (r.thoughtRatio || 70) + '%' }}
-                />
-                <small>{r.date?.slice(5)}</small>
-              </div>
+        <MutedText>최근 훈련에서 나타난 사고 구성의 변화를 살펴보세요.</MutedText>
+        <div
+          className="relative mt-6 rounded-xl p-4"
+          style={{ background: CHART_COLORS.background }}
+        >
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="block h-48 w-full sm:h-56"
+            role="img"
+            aria-label="훈련별 자기 사고 구성과 AI 의존도 변화"
+          >
+            {[0, 25, 50, 75].map((v) => (
+              <line
+                key={v}
+                x1="0"
+                x2="100"
+                y1={toY(v)}
+                y2={toY(v)}
+                stroke={CHART_COLORS.grid}
+                strokeWidth="1"
+                vectorEffect="non-scaling-stroke"
+              />
             ))}
+            {aiPath && (
+              <path
+                d={aiPath}
+                fill="none"
+                stroke={CHART_COLORS.ai}
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+            {selfPath && (
+              <path
+                d={selfPath}
+                fill="none"
+                stroke={CHART_COLORS.self}
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            )}
+          </svg>
+          {trend.length < 2 && (
+            <p className="absolute inset-0 m-0 flex items-center justify-center px-4 text-center text-sm text-[#7B8078]">
+              훈련을 2회 이상 완료하면 변화 그래프가 나타나요.
+            </p>
+          )}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-4 text-xs text-[#7B8078]">
+          <span className="flex items-center gap-1.5">
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ background: CHART_COLORS.self }}
+            />
+            자기 사고 구성
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ background: CHART_COLORS.ai }}
+            />
+            AI 의존도
+          </span>
         </div>
         <TwoColumnGrid>
           <InfoBox>
+            <b>AI 의존 감소율</b>
+            <p>{aiChangeLabel(serverGrowth?.aiChange)}</p>
+          </InfoBox>
+          <InfoBox>
+            <b>자기 구성 증가율</b>
+            <p>{selfChangeLabel(serverGrowth?.selfChange)}</p>
+          </InfoBox>
+        </TwoColumnGrid>
+        <TwoColumnGrid>
+          <InfoBox>
             <b>가장 성장한 항목</b>
-            <p>{demoAnalysis.growth.strongest}</p>
+            <p>{serverGrowth?.strongest || demoAnalysis.growth.strongest}</p>
           </InfoBox>
           <InfoBox>
             <b>집중 개선 항목</b>
-            <p>{demoAnalysis.growth.focus}</p>
+            <p>{serverGrowth?.focus || demoAnalysis.growth.focus}</p>
           </InfoBox>
         </TwoColumnGrid>
       </Card>

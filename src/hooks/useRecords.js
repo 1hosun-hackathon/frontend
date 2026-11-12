@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { STORAGE, DRAFT, get, set } from '../lib/storage';
 import { sampleRecords } from '../mocks/records';
 export function useRecords() {
-  const [records, setRecords] = useState(() => get(STORAGE, sampleRecords));
+  // 서버 기록(useServerRecords)으로 채우므로 빈 배열에서 시작 (mock·이전 계정 캐시 표시 방지)
+  const [records, setRecords] = useState([]);
   const [saved, setSaved] = useState(() => get(DRAFT, null));
   const [selected, setSelected] = useState(null);
   const [menu, setMenu] = useState(null);

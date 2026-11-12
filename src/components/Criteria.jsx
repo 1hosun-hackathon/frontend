@@ -3,10 +3,17 @@ import InfoBox from './InfoBox';
 import React from 'react';
 import { criteria } from '../mocks/criteria';
 import { ChevronDown } from 'lucide-react';
+import { useTrainingContext } from '../context/TrainingContext';
 
-export const Criteria = ({ completion = false }) => (
+export const Criteria = ({ completion = false }) => {
+  // 비교 분석·다시 쓰기: 서버 항목(session.analysis.criteria), 없으면 mock.
+  // 완료 화면(completion)은 최초 초안 vs 최종 글 등급 비교용이라 mock 유지 (API 없음)
+  const { session } = useTrainingContext();
+  const serverItems = session.analysis?.criteria;
+  const items = !completion && serverItems?.length ? serverItems : criteria;
+  return (
   <div className="space-y-4">
-    {criteria.map((c, i) => (
+    {items.map((c, i) => (
       <details
         className="overflow-hidden rounded-xl border border-[#E8EAE6] bg-white [&>summary]:flex [&>summary]:cursor-pointer [&>summary]:list-none [&>summary]:items-center [&>summary]:justify-between [&>summary]:gap-4 [&>summary]:p-5 [&_small]:text-xs [&_small]:text-[#7B8078]"
         key={c.name}
@@ -27,11 +34,11 @@ export const Criteria = ({ completion = false }) => (
             <>
               <TwoColumnGrid>
                 <InfoBox>
-                  <b>최초 초안 · {c.before}</b>
+                  <b>최초 초안{c.before ? ` · ${c.before}` : ''}</b>
                   <p>{c.mine}</p>
                 </InfoBox>
                 <InfoBox>
-                  <b>최종 글 · {c.after}</b>
+                  <b>최종 글{c.after ? ` · ${c.after}` : ''}</b>
                   <p>{c.action}을 중심으로 개선했습니다.</p>
                 </InfoBox>
               </TwoColumnGrid>
@@ -41,11 +48,11 @@ export const Criteria = ({ completion = false }) => (
             <>
               <TwoColumnGrid>
                 <InfoBox>
-                  <b>내 글 · {c.before}</b>
+                  <b>내 글{c.before ? ` · ${c.before}` : ''}</b>
                   <p>{c.mine}</p>
                 </InfoBox>
                 <InfoBox>
-                  <b>AI 글 · {c.after}</b>
+                  <b>AI 글{c.after ? ` · ${c.after}` : ''}</b>
                   <p>{c.ai}</p>
                 </InfoBox>
               </TwoColumnGrid>
@@ -61,4 +68,5 @@ export const Criteria = ({ completion = false }) => (
       </details>
     ))}
   </div>
-);
+  );
+};

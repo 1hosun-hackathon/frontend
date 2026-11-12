@@ -8,7 +8,7 @@ import React from 'react';
 import { MoreHorizontal, Trash2 } from 'lucide-react';
 
 export default function HistoryPage() {
-  const { records, saved, menu, setSelected, setMenu, resume, requestDelete } =
+  const { records, inProgressList, menu, setSelected, setMenu, resumeTraining, requestDelete } =
     useTrainingContext();
   const { navigate } = useAuthContext();
   return (
@@ -20,13 +20,13 @@ export default function HistoryPage() {
       </PageIntro>
       <Card>
         {[
-          ...(saved ? [{ ...saved, id: 'draft', status: '진행 중' }] : []),
+          ...inProgressList,
           ...records,
         ].length === 0 ? (
           <MutedText>아직 기록이 없습니다.</MutedText>
         ) : (
           [
-            ...(saved ? [{ ...saved, id: 'draft', status: '진행 중' }] : []),
+            ...inProgressList,
             ...records,
           ].map((r) => (
             <div
@@ -38,7 +38,7 @@ export default function HistoryPage() {
                 role="button"
                 tabIndex={0}
                 onClick={() => {
-                  if (r.id === 'draft') resume();
+                  if (r.inProgress) resumeTraining(r);
                   else {
                     setSelected(r);
                     navigate('/completion/' + r.id);
@@ -46,7 +46,7 @@ export default function HistoryPage() {
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
-                    if (r.id === 'draft') resume();
+                    if (r.inProgress) resumeTraining(r);
                     else {
                       setSelected(r);
                       navigate('/completion/' + r.id);

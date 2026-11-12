@@ -44,7 +44,7 @@ export default function ComparisonPage() {
       <Card>
         <Eyebrow>OVERALL COMPARISON</Eyebrow>
         <h2>종합 비교 리포트</h2>
-        {demoAnalysis.comparisonReport.map((paragraph, index) => (
+        {(session.analysis?.report?.length ? session.analysis.report : demoAnalysis.comparisonReport).map((paragraph, index) => (
           <p key={index}>{paragraph}</p>
         ))}
       </Card>
@@ -53,11 +53,11 @@ export default function ComparisonPage() {
         <TwoColumnGrid>
           <InfoBox>
             <b>나의 강점</b>
-            <p>나만의 문제의식과 관점을 중심으로 글을 구성한 점</p>
+            <p>{session.analysis?.strengths || '나만의 문제의식과 관점을 중심으로 글을 구성한 점'}</p>
           </InfoBox>
           <InfoBox>
             <b>보완할 점</b>
-            <p>주장을 뒷받침하는 자료의 출처와 문단 간 연결을 검토할 점</p>
+            <p>{session.analysis?.improvements || '주장을 뒷받침하는 자료의 출처와 문단 간 연결을 검토할 점'}</p>
           </InfoBox>
         </TwoColumnGrid>
       </Card>
@@ -68,8 +68,17 @@ export default function ComparisonPage() {
       </Card>
       <Card>
         <h2>사고 확장 질문</h2>
-        <p>① 이 주장에 반대하는 사람은 어떤 근거를 제시할까요?</p>
-        <p>② 나의 관점을 더 설득력 있게 만드는 실제 사례는 무엇일까요?</p>
+        {(session.analysis?.questions?.length
+          ? session.analysis.questions
+          : [
+              '이 주장에 반대하는 사람은 어떤 근거를 제시할까요?',
+              '나의 관점을 더 설득력 있게 만드는 실제 사례는 무엇일까요?',
+            ]
+        ).map((q, i) => (
+          <p key={i}>
+            {i < 20 ? String.fromCharCode(0x2460 + i) : `${i + 1}.`} {q}
+          </p>
+        ))}
         <Button onClick={() => navigate('/rewrite')}>
           {session.recheckCount ? '계속 다시 쓰기 →' : '내 글 다시 쓰기 →'}
         </Button>

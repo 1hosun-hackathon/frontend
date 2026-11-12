@@ -1,22 +1,17 @@
 import { useEffect, useState } from 'react';
-import { STORAGE, DRAFT, get, set } from '../lib/storage';
-import { sampleRecords } from '../mocks/records';
+import { STORAGE, DRAFT } from '../lib/storage';
 export function useRecords() {
   // 서버 기록(useServerRecords)으로 채우므로 빈 배열에서 시작 (mock·이전 계정 캐시 표시 방지)
   const [records, setRecords] = useState([]);
-  const [saved, setSaved] = useState(() => get(DRAFT, null));
   const [selected, setSelected] = useState(null);
   const [menu, setMenu] = useState(null);
-  const [deleting, setDeleting] = useState(null);
-  useEffect(() => set(STORAGE, records), [records]);
+  // 예전 버전이 남긴 localStorage 기록·임시글 캐시 정리 (지금은 서버 데이터만 사용하고 읽는 곳이 없음)
   useEffect(() => {
-    if (saved) set(DRAFT, saved);
-    else {
-      try {
-        localStorage.removeItem(DRAFT);
-      } catch {}
-    }
-  }, [saved]);
+    try {
+      localStorage.removeItem(STORAGE);
+      localStorage.removeItem(DRAFT);
+    } catch {}
+  }, []);
   const ratio = records.length
     ? Math.round(
         records.reduce((n, r) => n + (Number(r.thoughtRatio) || 70), 0) /
@@ -26,14 +21,10 @@ export function useRecords() {
   return {
     records,
     setRecords,
-    saved,
-    setSaved,
     selected,
     setSelected,
     menu,
     setMenu,
-    deleting,
-    setDeleting,
     ratio,
   };
 }

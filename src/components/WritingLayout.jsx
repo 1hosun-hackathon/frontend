@@ -1,6 +1,7 @@
 import React from 'react';
 import Card from './Card';
 import { Eyebrow, MutedText } from './Typography';
+import { MAX_WRITING_LENGTH } from '../models/training';
 
 export function TopicCard({ session }) {
   return (
@@ -35,9 +36,15 @@ export function WritingSidebar({ children }) {
 
 export function WritingTextarea(props) {
   return (
-    <textarea
-      className="!h-140 !min-h-0 !max-h-140 !resize-none !overflow-y-auto max-sm:!h-110 max-sm:!max-h-110"
-      {...props}
-    />
+    <>
+      <textarea
+        className="!h-140 !min-h-0 !max-h-140 !resize-none !overflow-y-auto max-sm:!h-110 max-sm:!max-h-110"
+        {...props}
+        maxLength={MAX_WRITING_LENGTH}
+      />
+      <p className="text-right text-sm text-[#8D938B]">
+        {(props.value?.length ?? 0).toLocaleString()} / {MAX_WRITING_LENGTH.toLocaleString()}자 (공백 포함)
+      </p>
+    </>
   );
 }

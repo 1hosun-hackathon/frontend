@@ -24,7 +24,7 @@ export default function AuthPage() {
   return (
     <div className="auth-layout min-h-[75vh] flex items-center justify-center px-4">
       <div className="card-content w-full max-w-115 rounded-2xl border border-[#E6E9E4] bg-white p-6 sm:p-10 [&_h1]:text-3xl">
-        <div className="mb-4.5 flex items-center justify-center [&_img]:h-auto [&_img]:w-full [&_img]:max-w-60">
+        <div className="mb-4.5 flex items-center justify-center [&_img]:h-auto [&_img]:w-full [&_img]:max-w-40">
           <img src="/logo.png" alt="글적글적" />
         </div>
         <h1>{isSignup ? '회원가입' : '로그인'}</h1>

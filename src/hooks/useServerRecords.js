@@ -41,7 +41,14 @@ export function useServerRecords({
 
   // ① 완료 목록(전체 페이지) + 진행 중 목록 + 홈 + 대시보드 → records · saved · 비율
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      // 로그아웃·탈퇴·세션 만료: 이전 계정의 서버 값(비율·대시보드·진행 중 목록) 초기화
+      setServerRatio(null);
+      setServerGrowth(null);
+      setServerStreakDays(null);
+      setInProgressList([]);
+      return;
+    }
     if (!LIST_PATHS.includes(pathname) && !isCompletionPath(pathname)) return;
     let cancelled = false;
     Promise.all([

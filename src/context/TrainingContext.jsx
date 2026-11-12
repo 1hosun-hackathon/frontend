@@ -5,6 +5,7 @@ import { useWriting } from '../hooks/useWriting';
 import { useAuthContext } from './AuthContext';
 import { useModalContext } from './ModalContext';
 import { useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { getTraining } from '../api/trainings';
 import { getTrainingId } from '../hooks/trainingSession';
 import { startRewrite } from '../api/trainings';
@@ -15,12 +16,14 @@ import { deleteTraining } from '../api/records';
 import { withdraw as withdrawAccount } from '../api/home';
 import { clearTrainingId } from '../hooks/trainingSession';
 import { remainingSeconds } from '../hooks/timerClock';
+import { blank } from '../models/training';
 
 const TrainingContext = createContext(null);
 export function TrainingProvider({ children }) {
   const { navigate, logout } = useAuthContext();
   const { user } = useAuthContext();
   const { pathname } = useLocation();
+  const routerNavigate = useNavigate();
   const { openModal, notify } = useModalContext();
   const { closeModal } = useModalContext();
   const recordsState = useRecords();
@@ -66,6 +69,26 @@ export function TrainingProvider({ children }) {
     () => setWritingEndsAt(writing.session.timerEndsAt ?? null),
     [writing.session.timerEndsAt],
   );
+  // id 없이 /completion으로 온 경우(대시보드 최근 항목 등): 선택한 훈련의 id 주소로 바꿈.
+  // 새로고침해도 상세로 복구되고, replace라서 뒤로가기 기록이 쌓이지 않음
+  useEffect(() => {
+    const id = recordsState.selected?.trainingId ?? recordsState.selected?.id;
+    if (pathname !== '/completion' || typeof id !== 'number') return;
+    routerNavigate(`/completion/${id}`, { replace: true });
+  }, [pathname, recordsState.selected?.id]);
+  // 로그아웃·회원탈퇴·세션 만료로 user가 없어지면 이전 계정 데이터를 모두 비움
+  // (records·saved가 비면 useRecords의 기존 effect가 localStorage 캐시도 비움)
+  useEffect(() => {
+    if (user) return;
+    writing.setSession(blank());
+    writing.setFiles([]);
+    setRecords([]);
+    setSaved(null);
+    setSelected(null);
+    setMenu(null);
+    setDeleting(null);
+    clearTrainingId();
+  }, [user]);
   // 새로고침으로 session이 비었을 때 sessionStorage의 trainingId로 초안 작성 화면 복구
   useEffect(() => {
     if (pathname !== '/writing' || writing.session.trainingId) return;

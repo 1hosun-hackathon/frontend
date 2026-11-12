@@ -422,7 +422,8 @@ export function useWriting({
         setSelected(item);
         setSaved(null);
         clearTrainingId();
-        navigate('/completion');
+        // id가 들어간 주소로 이동해야 새로고침해도 상세(GET /detail)로 복구됨
+        navigate(`/completion/${item.id}`);
       })
       .catch((err) => notify(completeErrorText(err)))
       .finally(() => {

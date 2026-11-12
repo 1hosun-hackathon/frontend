@@ -74,12 +74,14 @@
 - **writingType 논설문 고정**: 서버 enum이 `논설문`만 허용해 화면 선택(6종)과 상관없이 `논설문`으로 전송 중. enum이 늘어나면 `toServerWritingType` 한 줄만 바꾸면 됨
 - **시간대 표시 (UTC)**: `timerEndsAt` 등 시각이 UTC인데 시간대 표시(`Z`) 없이 내려옴. 프론트는 UTC로 해석 중이라, 서버 시간대 설정이 바뀌면 타이머가 어긋남 → 시간대 포함 요청
 - **탈퇴 아이디 재사용**: 탈퇴 후 같은 아이디로 가입하면 409 `DUPLICATE_LOGIN_ID`. 탈퇴가 soft delete(`deleted_at`)라 아이디가 남는 것으로 보임. 재사용 허용 여부 결정 필요
-- **에러 응답 형식**: 에러 JSON 형식이 명세에 없어 HTTP 상태로만 구분 중(예: 409를 "변경 없음/상태 불일치" 포괄 문구로 안내)
+- **에러 응답 형식**: 확인됨: `{code, errors, message}`. 프론트는 `message`를 안내 문구에 그대로 쓰고 있고, 409 등 일부는 아직 HTTP 상태로 구분 중(필요하면 `code`로 세분화 가능)
 - **첨부 업로드**: 여러 파일 합계가 `max-request-size`(Spring 기본 10MB)를 넘으면 413 가능성, `.txt`·`.md` 허용 여부
+- **refresh 쿠키 Domain 속성**: 배포는 Vercel rewrites로 같은 출처를 만들기 때문에, refresh 쿠키에 `Domain=mind-test.store`가 지정돼 있으면 Vercel 도메인에서 쿠키가 저장되지 않음 → Domain 없이(호스트 전용) 발급되는지 확인 필요
 
 ## 7. 알아둘 것
-- **개발용 Vite 프록시**: `vite.config.js`의 `/api` 프록시는 `npm run dev`에서만 동작함. 배포 시에는 백엔드 CORS 설정(프론트 도메인 허용, `Allow-Credentials`, refresh 쿠키 `SameSite=None; Secure`, 타이머 보정용 `Expose-Headers: Date`) 또는 호스팅의 rewrites 설정이 필요
-- **환경변수**: 개발은 `.env.local`(`VITE_API_BASE_URL` 비움 → 프록시 사용, git 제외), 배포 빌드는 `.env.production`(`https://mind-test.store`)
+- **API 요청 경로**: 프론트는 항상 `/api/...` 상대 경로로 요청함. 개발은 `vite.config.js` 프록시, 배포(Vercel)는 `vercel.json` rewrites가 `https://mind-test.store`로 전달해 브라우저 입장에서 같은 출처라 CORS 설정이 필요 없음. 나머지 경로는 `/index.html`로 보내 새로고침해도 404가 나지 않음
+- **환경변수**: `.env.local`(git 제외)과 `.env.production` 모두 `VITE_API_BASE_URL`을 비워 둠. Vercel이 아닌 곳에 배포하면 같은 rewrites 설정이 필요함(또는 이 값에 백엔드 주소를 넣고 백엔드 CORS 설정)
+- **배포 후 확인**: refresh 쿠키에 `Domain=mind-test.store`가 붙으면 Vercel 도메인에서 쿠키가 저장되지 않아 새로고침 시 로그아웃됨(백엔드에서 Domain 제거 필요). 첨부 업로드가 Vercel 프록시 크기 제한에 걸리는지 확인
 - **node_modules가 레포에 포함돼 있음**: dev 서버를 켤 때마다 `node_modules/.vite` 변경이 잡히므로 커밋할 때 파일을 골라서 add
 - **완료 결과 주소**: 완료 후와 대시보드 최근 항목에서 `/completion/{trainingId}`로 이동해, 새로고침해도 상세(`GET /trainings/{id}/detail`)로 복구됨
 - **로그아웃·탈퇴·세션 만료 시 초기화**: 작성 중인 글, 첨부, 기록, 진행 중 목록, 선택한 기록, 서버 비율·대시보드 값, sessionStorage trainingId, localStorage 기록 캐시를 모두 비워 다른 계정에 이전 데이터가 보이지 않음

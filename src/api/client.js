@@ -28,7 +28,7 @@ export const onAuthExpired = (listener) => {
 
 export class ApiError extends Error {
   constructor(status, body) {
-    // 에러 응답 형식은 명세에 없어(보류 항목) message 필드가 있을 때만 사용한다
+    // 에러 응답 형식 {code, errors, message} 중 message를 안내 문구로 사용 (없으면 기본 문구)
     const serverMessage =
       body && typeof body === 'object' && typeof body.message === 'string'
         ? body.message

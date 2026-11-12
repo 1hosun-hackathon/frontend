@@ -142,7 +142,7 @@ export default function GrowthDashboardPage() {
             key={r.id}
             onClick={() => {
               setSelected(r);
-              navigate('/completion');
+              navigate('/completion/' + r.id);
             }}
           >
             <b>{r.topic}</b>

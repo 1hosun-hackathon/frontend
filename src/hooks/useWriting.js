@@ -8,11 +8,13 @@ import {
   submitDraft,
   submitRevision,
   completeTraining,
+  startRewrite,
 } from '../api/trainings';
 import { getAnalysis, pollAnalysis, retryAnalysis } from '../api/analyses';
 import { toAnalysisView } from '../api/analysisView';
 import { setTrainingId, clearTrainingId } from './trainingSession';
 import { remainingSeconds } from './timerClock';
+import { useAttachments } from './useAttachments';
 // 서버 응답 에러(ApiError)면 그 메시지, 네트워크 오류 등은 fallback 문구
 const errorText = (err, fallback) => (err?.status ? err.message : fallback);
 // 서버 진행 중 항목을 이어서 열 때 상태별 이동 화면
@@ -22,22 +24,7 @@ const RESUME_PATH = {
   COMPARED: '/analysis',
   REWRITING: '/rewrite',
 };
-// 첨부파일 검증 기준 (SetupPage input의 accept와 같은 확장자, 명세: 0~5개, 각 10MB 이하)
-const ALLOWED_FILE_EXT = ['pdf', 'ppt', 'pptx', 'doc', 'docx', 'txt', 'md', 'png', 'jpg', 'jpeg'];
-const MAX_FILES = 5;
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
-// 파일 크기 표시: 1024KB 미만은 KB(정수, 최소 1KB), 이상은 MB(소수 1자리)
-const formatFileSize = (bytes) => {
-  if (typeof bytes !== 'number') return '';
-  const kb = Math.max(1, Math.round(bytes / 1024));
-  return kb < 1024 ? `${kb}KB` : `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-};
-const toFileItem = (f) => ({
-  name: f.name,
-  size: f.size,
-  sizeLabel: formatFileSize(f.size),
-});
-// 훈련 생성 에러: 413 = 파일 크기, 첨부가 있을 때 400 = 파일 형식으로 안내 (에러 JSON 형식이 확정되지 않아 HTTP 상태로 구분)
+// 훈련 생성 에러: 413 = 파일 크기, 첨부가 있을 때 400 = 파일 형식으로 안내 (HTTP 상태로 구분. 필요하면 에러 응답의 code로 세분화 가능)
 const createErrorText = (err, hasFiles) => {
   if (err?.status === 413)
     return '첨부파일 크기가 너무 커요.\n각 파일은 10MB 이하로 올려 주세요.';
@@ -45,7 +32,7 @@ const createErrorText = (err, hasFiles) => {
     return '첨부할 수 없는 형식의 파일이 있어요.\nPDF, PPT, 문서, 이미지 파일만 올릴 수 있어요.';
   return errorText(err, '글 작성을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.');
 };
-// 재검사 에러: 에러 JSON 형식이 확정되지 않아 HTTP 상태로 구분 (409는 NO_CHANGES·상태 불일치 모두 포괄)
+// 재검사 에러: HTTP 상태로 구분 (409는 NO_CHANGES·상태 불일치 모두 포괄)
 const revisionErrorText = (err) => {
   if (err?.status === 409)
     return '직전 제출본과 달라진 내용이 없거나, 지금은 다시 검사할 수 없는 상태예요.\n글을 수정했는지 확인해 주세요.';
@@ -62,8 +49,6 @@ const completeErrorText = (err) => {
 export function useWriting({
   navigate,
   notify,
-  setSaved,
-  saved,
   setRecords,
   setSelected,
   setSeconds,
@@ -71,94 +56,72 @@ export function useWriting({
   closeModal = () => {},
 }) {
   const [session, setSession] = useState(blank);
-  // 화면 목록용: [{ name, size, sizeLabel }] (File 객체는 fileObjectsRef에 같은 순서로 보관)
-  const [files, setFileNames] = useState([]);
-  // 업로드할 실제 File 객체 (이름 목록 files와 함께 갱신. 메모리에만 있어 새로고침하면 사라짐)
-  const fileObjectsRef = useRef([]);
-  // 검증 공통: 형식·10MB·중복을 걸러내고, 기존 목록(base)과 합쳐 최대 5개까지 반영
-  const applyFiles = (base, list) => {
-    const items = Array.from(list ?? []);
-    const problems = [];
-    const sameFile = (a, b) =>
-      a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
-    let valid = items.filter((f) => {
-      const ext = f.name.includes('.') ? f.name.split('.').pop().toLowerCase() : '';
-      if (!ALLOWED_FILE_EXT.includes(ext)) {
-        problems.push(`${f.name} · 올릴 수 없는 형식`);
-        return false;
-      }
-      if (f.size > MAX_FILE_SIZE) {
-        problems.push(`${f.name} · 10MB 초과`);
-        return false;
-      }
-      if (base.some((b) => sameFile(b, f))) {
-        problems.push(`${f.name} · 이미 추가한 파일`);
-        return false;
-      }
-      return true;
-    });
-    let next = [...base, ...valid];
-    if (next.length > MAX_FILES) {
-      problems.push(`최대 ${MAX_FILES}개까지 올릴 수 있어 앞의 ${MAX_FILES}개만 첨부했어요.`);
-      next = next.slice(0, MAX_FILES);
-    }
-    fileObjectsRef.current = next;
-    setFileNames(next.map(toFileItem));
-    if (problems.length)
-      notify(`첨부하지 못한 파일이 있어요.\n${problems.join('\n')}`);
-  };
-  // 기존 setFiles: 목록을 새로 고른 파일로 바꿈 (File 배열이 아니면 이름만 저장)
-  const setFiles = (list) => {
-    const items = Array.from(list ?? []);
-    const isFile = (f) => typeof File !== 'undefined' && f instanceof File;
-    if (!items.every(isFile)) {
-      fileObjectsRef.current = [];
-      setFileNames(items.map((name) => ({ name, size: null, sizeLabel: '' })));
-      return;
-    }
-    applyFiles([], items);
-  };
-  // 파일을 더 고르면 기존 목록 뒤에 이어 붙임 (최대 5개, 같은 파일은 건너뜀)
-  const addFiles = (list) => applyFiles(fileObjectsRef.current, list);
-  // 목록의 index번째 파일을 화면 목록과 업로드 대상(ref) 모두에서 제거
-  const removeFile = (index) => {
-    const next = fileObjectsRef.current.filter((_, i) => i !== index);
-    fileObjectsRef.current = next;
-    setFileNames((prev) => prev.filter((_, i) => i !== index));
-  };
+  // 첨부파일 목록·검증 (File 객체는 fileObjectsRef에 보관, 업로드 때 사용)
+  const { files, fileObjectsRef, setFiles, addFiles, removeFile, clearFiles } =
+    useAttachments(notify);
   const busy = useRef(false);
   const update = (k, v) => setSession((s) => ({ ...s, [k]: v }));
+  // COMPARED → REWRITING 전환 (POST /rewrite, 이미 REWRITING이면 그대로라 여러 번 호출해도 결과 같음).
+  // 성공하면 true, 실패하면 안내 후 false
+  const enterRewriting = (trainingId) =>
+    startRewrite(trainingId)
+      .then((w) => {
+        setSession((s) => ({
+          ...s,
+          status: w?.status ?? 'REWRITING',
+          final: s.final || w?.editorContent || '',
+        }));
+        return true;
+      })
+      .catch(() => {
+        notify('다시 쓰기를 시작하지 못했어요. 잠시 후 다시 시도해 주세요.');
+        return false;
+      });
+  // 비교 분석 화면의 "다시 쓰기" 버튼: 화면 이동 후 서버 상태 전환
+  const startRewriting = () => {
+    navigate('/rewrite');
+    if (session.trainingId && session.status === 'COMPARED')
+      enterRewriting(session.trainingId);
+  };
+  // 다시 쓰기 화면인데 아직 COMPARED인 경우(비교 분석에서 뒤로가기로 돌아옴 등): 저장·재검사·완료 전에 먼저 전환
+  const ensureRewriting = () =>
+    session.trainingId &&
+    session.status === 'COMPARED' &&
+    window.location.pathname === '/rewrite'
+      ? enterRewriting(session.trainingId)
+      : Promise.resolve(true);
   const startNewWriting = () => {
     clearTrainingId();
     // 이전 글의 첨부가 남지 않도록 비움 (기존에는 비우지 않던 버그)
-    fileObjectsRef.current = [];
-    setFileNames([]);
+    clearFiles();
     setSession(blank());
     navigate('/setup');
   };
   const saveDraft = () => {
-    const saveLocal = () => {
-      setSaved({ ...session, date: today(), status: '진행 중' });
-      notify('임시 저장했어요.');
+    const saveLocal = () => notify('임시 저장했어요.');
+    // 서버 임시저장: DRAFTING이면 초안, REWRITING이면 수정본. 그 외 상태(분석 중·비교 완료)는 서버 저장 없이 같은 안내만 (예전 로컬 캐시는 읽는 곳이 없어 제거).
+    const save = (status) => {
+      const tempContent =
+        status === 'DRAFTING'
+          ? session.draft
+          : status === 'REWRITING'
+            ? session.final
+            : null;
+      if (session.trainingId && tempContent !== null) {
+        saveTemp(session.trainingId, tempContent)
+          .then(saveLocal)
+          .catch((err) =>
+            notify(errorText(err, '임시 저장에 실패했어요. 잠시 후 다시 시도해 주세요.')),
+          );
+        return;
+      }
+      saveLocal();
     };
-    // 서버 임시저장: DRAFTING이면 초안, REWRITING이면 수정본. 그 외 상태(분석 중·비교 완료)는 로컬 저장만.
-    const status =
-      session.status ?? (session.analysisId ? null : 'DRAFTING');
-    const tempContent =
-      status === 'DRAFTING'
-        ? session.draft
-        : status === 'REWRITING'
-          ? session.final
-          : null;
-    if (session.trainingId && tempContent !== null) {
-      saveTemp(session.trainingId, tempContent)
-        .then(saveLocal)
-        .catch((err) =>
-          notify(errorText(err, '임시 저장에 실패했어요. 잠시 후 다시 시도해 주세요.')),
-        );
+    if (session.status === 'COMPARED' && window.location.pathname === '/rewrite') {
+      ensureRewriting().then((ok) => ok && save('REWRITING'));
       return;
     }
-    saveLocal();
+    save(session.status ?? (session.analysisId ? null : 'DRAFTING'));
   };
   // 서버 목록에서 온 진행 중 항목(본문 없음) 이어서 열기: session을 비우고,
   // 상태에 맞는 화면으로 이동하면 그 화면의 복구 effect가 서버에서 불러옴
@@ -167,20 +130,6 @@ export function useWriting({
     setTrainingId(item.trainingId);
     setSession(blank());
     navigate(RESUME_PATH[item.trainingStatus] ?? '/writing');
-  };
-  const resume = () => {
-    if (!saved) return;
-    if (saved.trainingId && saved.trainingStatus) {
-      resumeTraining(saved);
-      return;
-    }
-    if (saved.trainingId) setTrainingId(saved.trainingId);
-    setSession(saved);
-    setSeconds(
-      remainingSeconds(saved.timerEndsAt, saved.minutes) ??
-        (saved.minutes ?? 15) * 60,
-    );
-    navigate(saved.draft || saved.trainingId ? '/writing' : '/setup');
   };
   const begin = () => {
     if (!session.topic.trim()) {
@@ -389,13 +338,16 @@ export function useWriting({
       return;
     }
     // POST /revisions → 상태 확인 반복 → 결과 조회 (versions 추가는 waitForAnalysis에서)
-    runAnalysisTask(
-      () =>
-        submitRevision(session.trainingId, session.final).then((res) =>
-          waitForAnalysis(res.analysisId),
-        ),
-      revisionErrorText,
-    );
+    ensureRewriting().then((ok) => {
+      if (!ok) return;
+      runAnalysisTask(
+        () =>
+          submitRevision(session.trainingId, session.final).then((res) =>
+            waitForAnalysis(res.analysisId),
+          ),
+        revisionErrorText,
+      );
+    });
   };
   const complete = () => {
     if (!session.final.trim()) {
@@ -406,21 +358,33 @@ export function useWriting({
       notify('훈련 정보를 찾을 수 없어요. 새 글 작성하기로 다시 시작해 주세요.');
       return;
     }
+    ensureRewriting().then((ok) => ok && finishTraining());
+  };
+  const finishTraining = () => {
     if (busy.current) return;
     busy.current = true;
-    // POST /complete 성공 후 기존 로컬 처리 (완료 화면·기록은 다음 단계에서 서버 데이터로 교체)
+    // POST /complete 성공 후 로컬 기록에 먼저 넣고 완료 화면으로 이동 (본문은 완료 화면에서 GET /detail로 다시 채움)
     completeTraining(session.trainingId, session.final)
       .then((res) => {
+        // 기록 화면·완료 화면이 읽는 값만 담음. 본문은 상세(GET /detail)가 올 때까지 이 값을 보여줌
+        const id = res?.trainingId ?? session.trainingId;
         const item = {
-          ...session,
-          id: res?.trainingId ?? session.trainingId,
+          id,
+          trainingId: id,
+          topic: session.topic,
+          genre: session.genre,
           date: today(),
+          recheckCount: session.recheckCount,
           status: '완료',
+          trainingStatus: 'COMPLETED',
+          draft: session.draft,
+          final: session.final,
+          versions: session.versions,
           thoughtRatio: session.thoughtRatio || 70,
+          bodyFromSession: true,
         };
         setRecords((rs) => [item, ...rs]);
         setSelected(item);
-        setSaved(null);
         clearTrainingId();
         // id가 들어간 주소로 이동해야 새로고침해도 상세(GET /detail)로 복구됨
         navigate(`/completion/${item.id}`);
@@ -454,8 +418,9 @@ export function useWriting({
     update,
     startNewWriting,
     saveDraft,
-    resume,
     resumeTraining,
+    startRewriting,
+    enterRewriting,
     begin,
     submit,
     recheck,

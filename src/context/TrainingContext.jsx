@@ -1,35 +1,26 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef } from 'react';
 import { useRecords } from '../hooks/useRecords';
 import { useTimer } from '../hooks/useTimer';
 import { useWriting } from '../hooks/useWriting';
 import { useAuthContext } from './AuthContext';
 import { useModalContext } from './ModalContext';
-import { useLocation } from 'react-router-dom';
-import { useNavigate } from 'react-router-dom';
-import { getTraining } from '../api/trainings';
-import { getTrainingId } from '../hooks/trainingSession';
-import { startRewrite } from '../api/trainings';
-import { getAnalysis } from '../api/analyses';
-import { toAnalysisView } from '../api/analysisView';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { getTrainingId, clearTrainingId } from '../hooks/trainingSession';
+import { useSessionRestore } from '../hooks/useSessionRestore';
 import { useServerRecords } from '../hooks/useServerRecords';
 import { deleteTraining } from '../api/records';
 import { withdraw as withdrawAccount } from '../api/home';
-import { clearTrainingId } from '../hooks/trainingSession';
-import { remainingSeconds } from '../hooks/timerClock';
 import { blank } from '../models/training';
 
 const TrainingContext = createContext(null);
 export function TrainingProvider({ children }) {
-  const { navigate, logout } = useAuthContext();
-  const { user } = useAuthContext();
+  const { navigate, logout, user } = useAuthContext();
   const { pathname } = useLocation();
   const routerNavigate = useNavigate();
-  const { openModal, notify } = useModalContext();
-  const { closeModal } = useModalContext();
+  const { openModal, notify, closeModal } = useModalContext();
   const recordsState = useRecords();
-  const { setRecords, setSaved, saved, setSelected, setMenu, setDeleting } =
-    recordsState;
-  // 서버 기록으로 records · saved · selected 채우기 (홈·기록·대시보드·마이페이지·완료 화면)
+  const { setRecords, setSelected, setMenu } = recordsState;
+  // 서버 기록으로 records · 진행 중 목록 · selected 채우기 (홈·기록·대시보드·마이페이지·완료 화면)
   const {
     serverRatio,
     serverGrowth,
@@ -37,39 +28,35 @@ export function TrainingProvider({ children }) {
     inProgressList,
     removeInProgress,
     reload: reloadRecords,
+    invalidate: invalidateRecords,
   } = useServerRecords({
     user,
     pathname,
     records: recordsState.records,
     setRecords,
-    setSaved,
     selected: recordsState.selected,
     setSelected,
   });
-  const [writingMinutes, setWritingMinutes] = useState(null);
-  // 서버 timerEndsAt (session과 동기화, writingMinutes와 같은 방식)
-  const [writingEndsAt, setWritingEndsAt] = useState(null);
-  const timer = useTimer(pathname, writingMinutes, writingEndsAt);
+  // useWriting이 타이머보다 먼저 만들어지므로 남은 시간 설정은 ref로 연결
+  // (setSeconds는 렌더 중이 아니라 버튼·응답 처리에서만 호출됨)
+  const setSecondsRef = useRef(null);
   const writing = useWriting({
     navigate,
     notify,
-    setSaved,
-    saved,
     setRecords,
     setSelected,
-    setSeconds: timer.setSeconds,
+    setSeconds: (s) => setSecondsRef.current?.(s),
     openModal,
     closeModal,
   });
-  useEffect(
-    () => setWritingMinutes(writing.session.minutes),
-    [writing.session.minutes],
+  // 타이머: session의 제한 시간과 서버 종료 시각(timerEndsAt, UTC)을 직접 읽음
+  const timer = useTimer(
+    pathname,
+    writing.session.minutes,
+    writing.session.timerEndsAt ?? null,
   );
-  useEffect(
-    () => setWritingEndsAt(writing.session.timerEndsAt ?? null),
-    [writing.session.timerEndsAt],
-  );
-  // id 없이 /completion으로 온 경우(대시보드 최근 항목 등): 선택한 훈련의 id 주소로 바꿈.
+  setSecondsRef.current = timer.setSeconds;
+  // id 없이 /completion으로 온 경우(화면 이동은 모두 id 주소를 쓰므로 주소 직접 입력 등 예외용): 선택한 훈련의 id 주소로 바꿈.
   // 새로고침해도 상세로 복구되고, replace라서 뒤로가기 기록이 쌓이지 않음
   useEffect(() => {
     const id = recordsState.selected?.trainingId ?? recordsState.selected?.id;
@@ -77,118 +64,27 @@ export function TrainingProvider({ children }) {
     routerNavigate(`/completion/${id}`, { replace: true });
   }, [pathname, recordsState.selected?.id]);
   // 로그아웃·회원탈퇴·세션 만료로 user가 없어지면 이전 계정 데이터를 모두 비움
-  // (records·saved가 비면 useRecords의 기존 effect가 localStorage 캐시도 비움)
   useEffect(() => {
     if (user) return;
     writing.setSession(blank());
     writing.setFiles([]);
     setRecords([]);
-    setSaved(null);
     setSelected(null);
     setMenu(null);
-    setDeleting(null);
     clearTrainingId();
   }, [user]);
-  // 새로고침으로 session이 비었을 때 sessionStorage의 trainingId로 초안 작성 화면 복구
-  useEffect(() => {
-    if (pathname !== '/writing' || writing.session.trainingId) return;
-    const id = getTrainingId();
-    if (!id) return;
-    let cancelled = false;
-    getTraining(id)
-      .then((w) => {
-        if (cancelled || !w) return;
-        writing.setSession((s) => ({
-          ...s,
-          trainingId: w.trainingId,
-          status: w.status,
-          topic: w.topic ?? '',
-          genre: w.writingType ?? s.genre,
-          requirements: w.requirements ?? '',
-          minutes: w.timerMinutes ?? null,
-          timerEndsAt: w.timerEndsAt ?? null,
-          attachments: w.attachments ?? [],
-          draft: w.editorContent ?? '',
-          pendingAnalysisId:
-            w.status === 'ANALYZING' ? w.latestAnalysisId : null,
-        }));
-        timer.setSeconds(
-          remainingSeconds(w.timerEndsAt, w.timerMinutes) ??
-            (w.timerMinutes ?? 15) * 60,
-        );
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [pathname, writing.session.trainingId]);
-  // /analysis·/rewrite에서 새로고침으로 session이 비었을 때 훈련 정보와 최근 분석 결과로 복구
-  useEffect(() => {
-    if (
-      !['/analysis', '/rewrite'].includes(pathname) ||
-      writing.session.trainingId
-    )
-      return;
-    const id = getTrainingId();
-    if (!id) return;
-    let cancelled = false;
-    getTraining(id)
-      .then(async (w) => {
-        if (cancelled || !w) return;
-        // 분석 중(ANALYZING)이면 결과가 아직 없으므로 조회하지 않음
-        const analysis =
-          w.latestAnalysisId && w.status !== 'ANALYZING'
-            ? await getAnalysis(w.latestAnalysisId).catch(() => null)
-            : null;
-        if (cancelled) return;
-        const seqNo = analysis?.seqNo ?? 0;
-        writing.setSession((s) => ({
-          ...s,
-          trainingId: w.trainingId,
-          status: w.status,
-          topic: w.topic ?? '',
-          genre: w.writingType ?? s.genre,
-          requirements: w.requirements ?? '',
-          minutes: w.timerMinutes ?? null,
-          draft:
-            analysis?.baseline?.content ??
-            (seqNo === 0 ? analysis?.myWriting?.content : undefined) ??
-            '',
-          final:
-            w.status === 'REWRITING'
-              ? (w.editorContent ?? '')
-              : (analysis?.myWriting?.content ?? w.editorContent ?? ''),
-          ai: analysis?.aiWriting?.content ?? '',
-          recheckCount: seqNo,
-          analysis: toAnalysisView(analysis),
-          analysisId: w.latestAnalysisId ?? null,
-          attachments: w.attachments ?? [],
-          pendingAnalysisId:
-            w.status === 'ANALYZING' ? w.latestAnalysisId : null,
-        }));
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [pathname, writing.session.trainingId]);
-  // 다시 쓰기 화면 진입 시 COMPARED → REWRITING 전환
-  // (비교 분석 화면의 "다시 쓰기" 버튼은 화면 파일이라 핸들러 대신 여기서 호출. 여러 번 호출해도 결과 같음)
-  useEffect(() => {
-    const { trainingId, status } = writing.session;
-    if (pathname !== '/rewrite' || !trainingId || status !== 'COMPARED') return;
-    startRewrite(trainingId)
-      .then((w) => {
-        writing.setSession((s) => ({
-          ...s,
-          status: w?.status ?? 'REWRITING',
-          final: s.final || w?.editorContent || '',
-        }));
-      })
-      .catch(() =>
-        notify('다시 쓰기를 시작하지 못했어요. 잠시 후 다시 시도해 주세요.'),
-      );
-  }, [pathname, writing.session.trainingId, writing.session.status]);
+  // 이 탭에서 훈련 상태가 바뀌면(시작·제출·분석 완료·다시 쓰기) 목록 캐시 무효화.
+  // 분석 대기 중 홈으로 나가도 완료되면 다음 목록 화면 진입 때 새 상태를 불러옴
+  useEffect(() => invalidateRecords(), [writing.session.status]);
+  // 새로고침으로 session이 비었을 때 sessionStorage의 trainingId로 복구 (/writing, /analysis, /rewrite)
+  useSessionRestore({
+    pathname,
+    trainingId: writing.session.trainingId,
+    setSession: writing.setSession,
+    setSeconds: timer.setSeconds,
+    // /rewrite 새로고침 복구 시 서버가 아직 COMPARED면 REWRITING으로 전환
+    enterRewriting: writing.enterRewriting,
+  });
   const requestDelete = (id) => {
     setMenu(null);
     // 진행 중 목록의 항목인지 (모달 제목, 목록에서 바로 빼기)
@@ -196,42 +92,30 @@ export function TrainingProvider({ children }) {
       (t) => String(t.id) === String(id),
     );
     openModal({
-      title:
-        id === 'draft' || isInProgress
-          ? '작성 중인 글을 삭제할까요?'
-          : '훈련 기록을 삭제할까요?',
+      title: isInProgress
+        ? '작성 중인 글을 삭제할까요?'
+        : '훈련 기록을 삭제할까요?',
       message:
         '초안, 비교 분석, 수정본과 최종 글이 삭제됩니다. 삭제 후에는 복구할 수 없습니다.',
       danger: true,
       confirmLabel: '삭제하기',
       onConfirm: () => {
+        // 비율·연속 일수 등도 바뀌므로 다음 목록 화면 진입 때 다시 불러옴
+        invalidateRecords();
         // 서버 삭제. 화면에서는 아래 기존 줄로 먼저 지우고, 실패하면 안내 후 목록을 다시 불러옴
-        const targetId = id === 'draft' ? saved?.trainingId : id;
-        if (id === 'draft' && targetId && targetId === getTrainingId())
-          clearTrainingId();
         // 진행 중 항목: 목록에서 바로 빼고, 현재 작업 중인 훈련이면 sessionStorage에서도 삭제
         if (isInProgress) {
           removeInProgress(id);
           if (String(id) === String(getTrainingId())) clearTrainingId();
         }
-        if (targetId)
-          deleteTraining(targetId).catch(() => {
+        if (id)
+          deleteTraining(id).catch(() => {
             notify('기록을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.');
             reloadRecords();
           });
-        if (id === 'draft') setSaved(null);
-        else setRecords((rs) => rs.filter((r) => String(r.id) !== String(id)));
+        setRecords((rs) => rs.filter((r) => String(r.id) !== String(id)));
       },
     });
-  };
-  const remove = () => {
-    if (recordsState.deleting === 'draft') setSaved(null);
-    else
-      setRecords((rs) =>
-        rs.filter((r) => String(r.id) !== String(recordsState.deleting)),
-      );
-    setDeleting(null);
-    setMenu(null);
   };
   const withdraw = () =>
     openModal({
@@ -245,7 +129,6 @@ export function TrainingProvider({ children }) {
         withdrawAccount()
           .then(() => {
             setRecords([]);
-            setSaved(null);
             logout();
           })
           .catch(() =>
@@ -261,7 +144,6 @@ export function TrainingProvider({ children }) {
         ...writing,
         withdraw,
         requestDelete,
-        remove,
         // 화면이 읽는 ratio를 서버 값(최근 완료 3회 평균)으로. 불러오기 전에는 기존 계산값
         ratio: serverRatio ?? recordsState.ratio,
         // 대시보드 mostImproved / focusArea의 label ({ strongest, focus }), 불러오기 전에는 null

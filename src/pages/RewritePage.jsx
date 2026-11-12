@@ -12,11 +12,12 @@ import { useTrainingContext } from '../context/TrainingContext';
 import React from 'react';
 import { Steps } from '../components/Steps';
 import { Criteria } from '../components/Criteria';
-import { demoAnalysis } from '../mocks/analysis';
+import { useAnalysisView } from '../hooks/useAnalysisView';
 
 export default function RewritePage() {
   const { session, update, saveDraft, recheck, complete, downloadText } =
     useTrainingContext();
+  const view = useAnalysisView('rewrite');
   return (
     <>
       <Steps index={3} />
@@ -52,19 +53,19 @@ export default function RewritePage() {
           <h2>비교 분석 참고</h2>
           <h3>종합 피드백</h3>
           <MutedText>
-            {session.analysis?.report?.[0] || '내 글의 고유한 관점을 유지하면서 근거와 구조를 보완해보세요.'}
+            {view.summary}
           </MutedText>
           <h3>강점</h3>
-          <MutedText>{session.analysis?.strengths || demoAnalysis.strengths}</MutedText>
+          <MutedText>{view.strengths}</MutedText>
           <h3>보완점</h3>
-          <MutedText>{session.analysis?.improvements || demoAnalysis.improvements}</MutedText>
+          <MutedText>{view.improvements}</MutedText>
           <details>
             <summary>항목별 비교 펼쳐보기</summary>
-            <Criteria />
+            <Criteria items={view.criteria} />
           </details>
           <h3>사고 확장 질문</h3>
           <MutedText>
-            {(session.analysis?.questions?.length ? session.analysis.questions : demoAnalysis.reflectionQuestions).map((q, i) => (
+            {view.questions.map((q, i) => (
               <React.Fragment key={q}>
                 {i > 0 && <br />}
                 {q}

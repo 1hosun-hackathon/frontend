@@ -3,14 +3,11 @@ import InfoBox from './InfoBox';
 import React from 'react';
 import { criteria } from '../mocks/criteria';
 import { ChevronDown } from 'lucide-react';
-import { useTrainingContext } from '../context/TrainingContext';
 
-export const Criteria = ({ completion = false }) => {
-  // 비교 분석·다시 쓰기: 서버 항목(session.analysis.criteria), 없으면 mock.
-  // 완료 화면(completion)은 최초 초안 vs 최종 글 등급 비교용이라 mock 유지 (API 없음)
-  const { session } = useTrainingContext();
-  const serverItems = session.analysis?.criteria;
-  const items = !completion && serverItems?.length ? serverItems : criteria;
+// items: 비교 분석·다시 쓰기 화면이 넘기는 항목(useAnalysisView의 criteria: 서버 값, 없으면 mock).
+// 완료 화면(completion)은 최초 초안 vs 최종 글 등급 비교용이라 mock 유지 (API 없음)
+export const Criteria = ({ completion = false, items: viewItems }) => {
+  const items = !completion && viewItems?.length ? viewItems : criteria;
   return (
   <div className="space-y-4">
     {items.map((c, i) => (

@@ -22,9 +22,6 @@ export const toRecord = (item) => ({
   trainingStatus: item.status,
 });
 
-// 진행 중 목록 항목 → saved (가장 최근 1건, 이어서 작성 로직용. 화면 목록은 toInProgress)
-export const toSaved = (item) => ({ ...toRecord(item), status: '진행 중' });
-
 // 진행 중 훈련 상태 → 화면 라벨
 const IN_PROGRESS_LABEL = {
   DRAFTING: '작성 중',

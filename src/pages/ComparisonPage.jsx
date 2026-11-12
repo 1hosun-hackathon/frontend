@@ -1,19 +1,18 @@
-import { demoAnalysis } from '../mocks/analysis';
 import Card from '../components/Card';
 import { Eyebrow, MutedText } from '../components/Typography';
 import TwoColumnGrid from '../components/TwoColumnGrid';
 import InfoBox from '../components/InfoBox';
 import Button from '../components/Button';
 import { useTrainingContext } from '../context/TrainingContext';
-import { useAuthContext } from '../context/AuthContext';
 import React from 'react';
 import { Steps } from '../components/Steps';
 import { CompareTexts } from '../components/CompareTexts';
 import { Criteria } from '../components/Criteria';
+import { useAnalysisView } from '../hooks/useAnalysisView';
 
 export default function ComparisonPage() {
-  const { session } = useTrainingContext();
-  const { navigate } = useAuthContext();
+  const { session, startRewriting } = useTrainingContext();
+  const view = useAnalysisView('comparison');
   return (
     <>
       <Steps index={2} />
@@ -44,7 +43,7 @@ export default function ComparisonPage() {
       <Card>
         <Eyebrow>OVERALL COMPARISON</Eyebrow>
         <h2>종합 비교 리포트</h2>
-        {(session.analysis?.report?.length ? session.analysis.report : demoAnalysis.comparisonReport).map((paragraph, index) => (
+        {view.report.map((paragraph, index) => (
           <p key={index}>{paragraph}</p>
         ))}
       </Card>
@@ -53,33 +52,27 @@ export default function ComparisonPage() {
         <TwoColumnGrid>
           <InfoBox>
             <b>나의 강점</b>
-            <p>{session.analysis?.strengths || '나만의 문제의식과 관점을 중심으로 글을 구성한 점'}</p>
+            <p>{view.strengths}</p>
           </InfoBox>
           <InfoBox>
             <b>보완할 점</b>
-            <p>{session.analysis?.improvements || '주장을 뒷받침하는 자료의 출처와 문단 간 연결을 검토할 점'}</p>
+            <p>{view.improvements}</p>
           </InfoBox>
         </TwoColumnGrid>
       </Card>
       <Card>
         <h2>항목별 비교 · 5가지 관점</h2>
         <MutedText>항목을 펼쳐 내 글과 AI 글의 차이를 확인하세요.</MutedText>
-        <Criteria />
+        <Criteria items={view.criteria} />
       </Card>
       <Card>
         <h2>사고 확장 질문</h2>
-        {(session.analysis?.questions?.length
-          ? session.analysis.questions
-          : [
-              '이 주장에 반대하는 사람은 어떤 근거를 제시할까요?',
-              '나의 관점을 더 설득력 있게 만드는 실제 사례는 무엇일까요?',
-            ]
-        ).map((q, i) => (
+        {view.questions.map((q, i) => (
           <p key={i}>
             {i < 20 ? String.fromCharCode(0x2460 + i) : `${i + 1}.`} {q}
           </p>
         ))}
-        <Button onClick={() => navigate('/rewrite')}>
+        <Button onClick={startRewriting}>
           {session.recheckCount ? '계속 다시 쓰기 →' : '내 글 다시 쓰기 →'}
         </Button>
       </Card>
